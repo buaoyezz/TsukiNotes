@@ -38,33 +38,124 @@ from PyQt5.QtWidgets import (
     QColorDialog, QDialog, QToolBar, QLineEdit, QDialogButtonBox, QGridLayout,
     QSpacerItem, QSizePolicy
 )
-from PyQt5.QtCore import QSettings, Qt, QEvent, QFile, QRegExp, QTimer 
+from PyQt5.QtCore import QSettings, Qt, QEvent, QFile, QRegExp, QTimer
 
-# 若用户使用cmd打开，输出debug mod
-debug_version = '1.0.0Beta'
-print("[LOG]Welcome Use TsukiNotes\n")
-print("[LOG]You are using version 1.4.7\n")
-print("[INFO]Running DEBUG MOD NOW!\n")
-time.sleep(0)
-print("Please wait for the program to start\n")
-print("====================================================================================================================")
-print("╔═══╗╔═══╗╔══╗ ╔╗╔╗╔══╗╔══╗╔╗╔╗╔═══╗")
-print("╚═╗ ║╚═╗ ║║╔╗║ ║║║║║╔╗║║╔╗║║║║║║╔══╝")
-print(" ╔╝╔╝ ╔╝╔╝║╚╝╚╗║║║║║╚╝║║║║║║╚╝║║╚══╗")
-print("╔╝╔╝ ╔╝╔╝ ║╔═╗║║║║║║╔╗║║║║║╚═╗║║╔══╝")
-print("║ ╚═╗║ ╚═╗║╚═╝║║╚╝║║║║║║╚╝║─╔╝║║╚══╗")
-print("╚═══╝╚═══╝╚═══╝╚══╝╚╝╚╝╚══╝─╚═╝╚═══╝")
-print("====================================================================================================================")
-print("╔════╗╔══╗╔╗╔╗╔╗╔══╗╔══╗╔╗─╔╗╔══╗╔════╗╔═══╗╔══╗\n"
-      "╚═╗╔═╝║╔═╝║║║║║║║╔═╝╚╗╔╝║╚═╝║║╔╗║╚═╗╔═╝║╔══╝║╔═╝\n"
-      "  ║║  ║╚═╗║║║║║╚╝║   ║║ ║╔╗ ║║║║║  ║║  ║╚══╗║╚═╗\n"
-      "  ║║  ╚═╗║║║║║║╔╗║   ║║ ║║╚╗║║║║║  ║║  ║╔══╝╚═╗║\n"
-      "  ║║  ╔═╝║║╚╝║║║║╚═╗╔╝╚╗║║ ║║║╚╝║  ║║  ║╚══╗╔═╝║\n"
-      "  ╚╝  ╚══╝╚══╝╚╝╚══╝╚══╝╚╝ ╚╝╚══╝  ╚╝  ╚═══╝╚══╝\n")
-print("====================================================================================================================")
-print("Running Succeed")
-print(f"DebugVersion: {debug_version}")
-print("====================================================================================================================\n\n")
+
+# 定义颜色
+RESET = '\033[0m'
+WHITE = '\033[97m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+GREEN = '\033[32m'
+class ColoredFormatter(logging.Formatter):
+    def format(self, record):
+        if record.levelno == logging.INFO:
+            color = GREEN
+        elif record.levelno == logging.WARNING:
+            color = YELLOW
+        elif record.levelno == logging.ERROR:
+            color = RED
+        else:
+            color = RESET
+
+        message = super().format(record)
+        return f'{color}{message}{RESET}'
+
+if os.path.exists('./tsuki/assets/log/'):
+    tips_log_dir = './tsuki/assets/log/'
+    os.makedirs(tips_log_dir, exist_ok=True)
+    def create_and_write_file(directory, filename, content):
+        os.makedirs(directory, exist_ok=True)
+        file_path = os.path.join(directory, filename)
+        # 写入
+        with open(file_path, 'w') as file:
+            file.write(content)
+    directory = './tsuki/assets/log/'
+    filename = 'Log_ZZBuAoYe_Readme.txt'
+    content = ('Dear User,\n\nThank you for using this software.\n\nYou are currently looking at the Log folder.\n\nPlease note the following:\n1. Logs are usually stored in the temp folder.\n2. The log files have a .log extension.\n3. Log file names follow this format: TsukiNotes_Log_{timestamp}.log, where {timestamp} is in the format datetime.now().strftime('').\n4. This text file is not pre-existing but is created automatically!\n5. Thanks for using our software.')
+
+    create_and_write_file(directory, filename, content)
+
+# 配置日志记录
+def setup_logging():
+    # 确保日志目录存在
+    log_dir = './tsuki/assets/log/temp/'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    os.makedirs(log_dir, exist_ok=True)
+
+    # 创建处理器
+    stream_handler = logging.StreamHandler()  # 输出到控制台
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    file_handler = logging.FileHandler(os.path.join(log_dir, f'TsukiNotes_Log_{timestamp}.log'))  # 输出到文件
+    # 设置格式化器
+    formatter = ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    stream_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(stream_handler)
+    logger.addHandler(file_handler)
+
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
+# debug mod
+debug_version = '1.0.0FullVersion'
+logger.info("[LOG]Welcome Use TsukiNotes")
+logger.info("[LOG]You are using version 1.4.8")
+logger.info("[INFO]Running DEBUG MOD NOW!")
+logger.info("Please wait for the program to start")
+logger.info("====================================================================================================================")
+logger.info("╔═══╗╔═══╗╔══╗ ╔╗╔╗╔══╗╔══╗╔╗╔╗╔═══╗")
+logger.info("╚═╗ ║╚═╗ ║║╔╗║ ║║║║║╔╗║║╔╗║║║║║║╔══╝")
+logger.info(" ╔╝╔╝ ╔╝╔╝║╚╝╚╗║║║║║╚╝║║║║║║╚╝║║╚══╗")
+logger.info("╔╝╔╝ ╔╝╔╝ ║╔═╗║║║║║║╔╗║║║║║╚═╗║║╔══╝")
+logger.info("║ ╚═╗║ ╚═╗║╚═╝║║╚╝║║║║║║╚╝║ ╔╝║║╚══╗")
+logger.info("╚═══╝╚═══╝╚═══╝╚══╝╚╝╚╝╚══╝ ╚═╝╚═══╝")
+logger.info("====================================================================================================================")
+logger.info("\n╔════╗╔══╗╔╗╔╗╔╗╔══╗╔══╗╔╗─╔╗╔══╗╔════╗╔═══╗╔══╗\n"
+            "╚═╗╔═╝║╔═╝║║║║║║║╔═╝╚╗╔╝║╚═╝║║╔╗║╚═╗╔═╝║╔══╝║╔═╝\n"
+            "  ║║  ║╚═╗║║║║║╚╝║   ║║ ║╔╗ ║║║║║  ║║  ║╚══╗║╚═╗\n"
+            "  ║║  ╚═╗║║║║║║╔╗║   ║║ ║║╚╗║║║║║  ║║  ║╔══╝╚═╗║\n"
+            "  ║║  ╔═╝║║╚╝║║║║╚═╗╔╝╚╗║║ ║║║╚╝║  ║║  ║╚══╗╔═╝║\n"
+            "  ╚╝  ╚══╝╚══╝╚╝╚══╝╚══╝╚╝ ╚╝╚══╝  ╚╝  ╚═══╝╚══╝\n")
+logger.info("====================================================================================================================")
+logger.info("Running Succeed")
+logger.info(f"DebugVersion: {debug_version}")
+logger.info('调试模式状态开启')
+logger.info("====================================================================================================================\n\n")
+
+import os
+import datetime
+import re
+
+
+def delete_old_logs(directory, time_threshold_days=3):
+    if not os.path.exists(directory):
+        logger.error(f"目录不存在: {directory}")
+        return
+
+    now = datetime.datetime.now()
+    for filename in os.listdir(directory):
+        if filename.endswith('.log'):
+            match = re.match(r'TsukiNotes_Log_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.log', filename)
+            if match:
+                timestamp_str = match.group(1)
+                try:
+                    log_time = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d_%H-%M-%S')
+                    time_difference = (now - log_time).days # 计算时间差
+
+                    if time_difference > time_threshold_days:
+                        file_path = os.path.join(directory, filename)
+                        os.remove(file_path)
+                        logger.info(f"删除文件: {file_path}")
+                        logger.info(f"完成操作！")
+                except ValueError as e:
+                    logger.error(f"时间戳解析错误: {timestamp_str} - 错误: {e}")
+log_directory = 'tsuki/assets/log/temp/'
+delete_old_logs(log_directory)
 # ==============================================================End Welcome===================================================================================================================
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, light=True, parent=None):
@@ -128,6 +219,7 @@ class SettingsWindow(QDialog):
         super(SettingsWindow, self).__init__(parent)
         self.setWindowTitle('Tsuki全局设置[Settings]')  # 更改窗口标题为设置界面
         self.setGeometry(100, 100, 600, 200)  # 设置窗口初始大小
+        logger.info('Open Setting')
 
         # 设置窗口的布局
         layout = QVBoxLayout(self)
@@ -157,6 +249,7 @@ class SettingsWindow(QDialog):
         grid_layout.addWidget(self.createButton("检查图标路径", self.parent().iconpath_check_a1), 3, 0)
         grid_layout.addWidget(self.createButton("统计/关于显示设置", self.parent().total_setting), 3, 1)
         grid_layout.addWidget(self.createButton("设置背景图", self.parent().setBackgroundImage), 4, 0)
+        grid_layout.addWidget(self.createButton("重置背景图",self.parent().reset_background), 4,1)
         # grid_layout.addWidget(self.createButton("恢复默认背景图", self.parent().resetBackgroundImage), 4, 1)
         # grid_layout.addWidget(self.createButton("清空临时文件夹", self.parent().clearTempFolder), 5, 0)
         # grid_layout.addWidget(self.createButton("设置自动更新背景时间", self.parent().setAutoUpdateInterval), 5, 1) #懒得修
@@ -238,6 +331,7 @@ class SearchResultDialog(QDialog):
             self.results_label.setText(result)
         else:
             self.results_label.setText("Tips:未找到有关的结果")
+            logger.info(f"Can't Find Result[{result}]")
             print(f"[Log/INFO]Can't Find Result[{result}]")
 
     def showNextResult(self):
@@ -262,11 +356,11 @@ class TsukiReader(QMainWindow):
 
     def __init__(self):
         self.before = ''
-        self.current_version = '1.4.7'  # 全局版本号
-        self.real_version = '1.4.7'
-        self.update_Date = '2024/6/28'
+        self.current_version = '1.4.8'  # 全局版本号
+        self.real_version = '1.4.8'
+        self.update_Date = '2024/08/02'
         self.version_td = 'FullVersion'
-        self.version_gj = 'b-v147FFvTN1235'
+        self.version_gj = 'b-v148FV240802'
         print(f"====================================================================================================================\n"
               f"[Log/INFO]TsukiReader is running ,relatedInformation:"
               f"[Back]Version:{self.current_version}\n"
@@ -278,6 +372,7 @@ class TsukiReader(QMainWindow):
         self.text_modified = False
         self.include_whitespace = False
         self.highlight_keywords = False
+        self.context_menu = None
         self.custom_lines = 0
         self.initUI()
 
@@ -299,12 +394,14 @@ class TsukiReader(QMainWindow):
         self.statusBar().addPermanentWidget(self.status_label)
         # 初始cfg load=======================================
         print("Loading Cfg=======================================")
+        logger.info(f"Loading Config")
         QTimer.singleShot(100, self.read_font_size_from_cfg)
         print(f"[Log/INFO]载入{self.read_font_size_from_cfg}成功")
         QTimer.singleShot(110,self.read_font_family_from_cfg)
         print(f"[Log/INFO]载入{self.read_font_family_from_cfg}成功")
         QTimer.singleShot(120, self.load_background_color)
         print(f"[Log/INFO]载入{self.load_background_color}成功")
+        logger.info(f"Config Loading Succeed")
         print("End.程序初始化完成=================================")
         # ====================================================
         v = sys.argv
@@ -315,11 +412,13 @@ class TsukiReader(QMainWindow):
             if os.path.isfile(nv[1]):
                 self.openFile(nv[1])
                 font = QFont("Microsoft YaHei UI")# 默认字体
+                logger.info(f"[Log/INFO]载入{nv[1]}成功")
                 self.text_edit.setFont(font)
             else:
                 QMessageBox.critical(self, 'Open File', f'失败了❌❗: 文件{nv[1]}不存在！')
                 self.statusBar().showMessage(f'TsukiOF❌: 文件[{nv[1]}]打开失败！Error:[文件不存在]')
                 print("[Log/ERROR]ERROR Init UI Open File:", "文件不存在")
+                logger.error(f"[Log/ERROR]ERROR Init UI Open File: 文件{nv[1]}不存在！")
                 self.newFile()
         else:
             self.newFile()
@@ -337,7 +436,6 @@ class TsukiReader(QMainWindow):
         self.context_menu = QMenu(self)
         self.loadBackgroundSettings()
 
-
     def showContextMenu(self, pos):
         self.context_menu = QMenu(self)
         self.context_menu.setStyleSheet("background-color: rgba(255, 255, 255, 150); border: 2px solid black;")
@@ -354,17 +452,25 @@ class TsukiReader(QMainWindow):
         self.addContextAction("Close Tab", 'Ctrl+W', self.closeFile)
         self.addContextAction("Update", 'Update->手动', self.update2)
         self.addContextAction("AutoUpdate", 'Update->Auto', self.Show_Auto_Update2)
-        self.addContextAction("MathTools",'点后计算[请提前选中计算式]',self.mathTools)
+        self.addContextAction("MathTools", '点后计算[请提前选中计算式]', self.mathTools)
 
         # 连接右键菜单到右键点击事件
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.showContextMenu)
         self.context_menu.exec_(self.mapToGlobal(pos))
-
+    def addContextAction(self, text, shortcut, slot, icon=None):
+        if icon:
+            action = QAction(icon, text, self)
+        else:
+            action = QAction(text, self)
+        action.setShortcut(shortcut)
+        action.triggered.connect(slot)
+        self.context_menu.addAction(action)
     def performClear(self):
         currentWidget = self.tabWidget.currentWidget()
         currentWidget.clear()
         self.statusBar().showMessage('Tsuki✔: 您执行了一次清空操作,按下Ctrl+Z撤销更改')
+        logger.info(f"[Log/INFO]执行清空操作")
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.showContextMenu)
@@ -380,7 +486,7 @@ class TsukiReader(QMainWindow):
     def set_font_size(self):
         try:
             font_size, ok = QInputDialog.getInt(self, '设置字体大小', '请输入字体大小:', 12, 1, 100, 1)
-            print("[INFO]Open QInputDialog")
+            logger.info(f"[Log/INFO]打开字体大小操作设置页面")
             if ok:
                 current_widget = self.tabWidget.currentWidget()
                 current_font = current_widget.font()
@@ -389,11 +495,15 @@ class TsukiReader(QMainWindow):
 
                 QMessageBox.information(self, '提示', f'字体大小设置成功为 {font_size}，喵~')
                 self.statusBar().showMessage(f'TsukiFS✔: 字体大小设置成功为 {font_size}')
+                logger.info(f"[Log/INFO]执行设置字体大小操作")
                 self.save_font_size_to_cfg(font_size)
+                logger.info(f"[Log/INFO]成功保存字体大小配置文件")
+
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
             print(f"{e}")
             self.statusBar().showMessage(f'TsukiFS❌: 字体大小设置失败！详见MessageBox！')
+            logger.error(f"[Log/ERROR]ERROR Set Font Size: {str(e)}")
 
     def save_font_size_to_cfg(self, font_size):
         config = configparser.ConfigParser()
@@ -404,12 +514,14 @@ class TsukiReader(QMainWindow):
         if not os.path.exists(cfg_dir):
             os.makedirs(cfg_dir)
             print("[INFO]SAVE")
+            logger.info(f"[Log/INFO]创建字体大小配置文件")
 
         # 保存配置文件
         cfg_path = os.path.join(cfg_dir, 'tn_font.ini')
         with open(cfg_path, 'w') as configfile:
             config.write(configfile)
             print(f"[INFO]SAVE {cfg_path}")
+            logger.info(f"[Log/INFO]成功保存字体大小配置文件")
 
     def read_font_size_from_cfg(self):
         cfg_file = "tsuki/assets/app/cfg/font/tn_font.ini"
@@ -427,68 +539,68 @@ class TsukiReader(QMainWindow):
 
 
     def createActions(self):
-        self.newAct = QAction('创建新的标签页（Ctrl+T）', self)
+        self.newAct = QAction(QIcon('./tsuki/assets/resources/create_tab.png'),'创建新的标签页（Ctrl+T）', self)
         self.newAct.triggered.connect(self.newFile)
 
-        self.openAct = QAction('打开文件（Ctrl+O）', self)
+        self.openAct = QAction(QIcon('./tsuki/assets/resources/import_file.png'),'打开文件（Ctrl+O）', self)
         self.openAct.triggered.connect(lambda: (self.openFile("")))
 
-        self.saveAct = QAction('保存修改（Ctrl+S）', self)
+        self.saveAct = QAction(QIcon('./tsuki/assets/resources/save_file.png'), '保存修改（Ctrl+S）', self)
         self.saveAct.triggered.connect(self.saveFile)
 
-        self.closeAct = QAction('关闭文件（Ctrl+W）', self)
+        self.closeAct = QAction(QIcon('./tsuki/assets/resources/off_file.png'),'关闭文件（Ctrl+W）', self)
         self.closeAct.triggered.connect(self.closeFile)
 
-        self.fontAct = QAction('修改字体', self)
+        self.fontAct = QAction(QIcon('./tsuki/assets/resources/font_reset_change.png'),'修改字体', self)
         self.fontAct.triggered.connect(self.changeFont)
 
-        self.setfontsizeAct = QAction('字体大小',self)
+        self.setfontsizeAct = QAction(QIcon('./tsuki/assets/resources/font_size_reset_tab.png'),'字体大小',self)
         self.setfontsizeAct.triggered.connect(self.set_font_size)
                                 
 
-        self.checkUpdateAct = QAction('检查更新', self)
+        self.checkUpdateAct = QAction(QIcon('./tsuki/assets/resources/update_cloud.png'),'检查更新', self)
         self.checkUpdateAct.triggered.connect(self.checkForUpdates)
 
-        self.aboutAct = QAction('关于Tsuki版本信息', self)
+        self.aboutAct = QAction(QIcon('./tsuki/assets/resources/about.png'),'关于Tsuki版本信息', self)
         self.aboutAct.triggered.connect(self.aboutMessage)
 
-        self.aboutDetailsAct = QAction('关于Tsuki详细信息', self)
+        self.aboutDetailsAct = QAction(QIcon('./tsuki/assets/resources/about.png'),'关于Tsuki详细信息', self)
         self.aboutDetailsAct.triggered.connect(self.aboutDetails)
 
-        self.updateAct = QAction('更新日志', self)
+        self.updateAct = QAction(QIcon('./tsuki/assets/resources/update_msg.png'),'更新日志', self)
         self.updateAct.triggered.connect(self.updateMessage)
 
-        self.updatetxtAct = QAction('关于Tsuki更新内容',self)
+        self.updatetxtAct = QAction(QIcon('./tsuki/assets/resources/update_msg.png'),'关于Tsuki更新内容',self)
         self.updatetxtAct.triggered.connect(self.updateMessage)
 
-        self.exitAct = QAction('退出程序', self)
+        self.exitAct = QAction(QIcon('./tsuki/assets/resources/exit_software.png'),'退出程序', self)
         self.exitAct.triggered.connect(self.close)
 
-        self.resetFontAct = QAction('重置字体', self)
+        self.resetFontAct = QAction(QIcon('./tsuki/assets/resources/font_reset_change.png'),'重置字体', self)
         self.resetFontAct.triggered.connect(self.resetFont)
 
-        self.update2Act = QAction('手动检测更新', self)
+        self.update2Act = QAction(QIcon('./tsuki/assets/resources/update_cloud.png'),'手动检测更新', self)
         self.update2Act.triggered.connect(self.update2)
 
-        self.renameTabAct = QAction('重命名标签', self)
+        self.renameTabAct = QAction(QIcon('./tsuki/assets/resources/font_size_reset_tab.png'),'重命名标签', self)
         self.renameTabAct.triggered.connect(self.renameTab)
 
-        self.cutTabAct = QAction('快捷键', self)
+        self.cutTabAct = QAction(QIcon('./tsuki/assets/resources/settings_list_shortcut.png'),'快捷键', self)
         self.cutTabAct.triggered.connect(self.cutTab)
 
-        self.pingServerManuallyAct = QAction('手动Ping服务器', self)
+        self.pingServerManuallyAct = QAction(QIcon('./tsuki/assets/resources/server_ping.png'),'手动Ping服务器', self)
         self.pingServerManuallyAct.triggered.connect(self.pingServerManually)
 
-        self.url_msgAct = QAction('测试服务器返回', self)
+        self.url_msgAct = QAction(QIcon('./tsuki/assets/resources/server_tb.png'),'测试服务器返回', self)
         self.url_msgAct.triggered.connect(self.url_msg)
 
-        self.versionnowAct = QAction('当前版本号')
+        self.versionnowAct = QAction(QIcon('./tsuki/assets/resources/custom_server.png'),'当前版本号')
         self.versionnowAct.triggered.connect(self.versionnow)
 
-        self.online_updateMessageAct = QAction('在线更新日志')
+        self.online_updateMessageAct = QAction(QIcon('./tsuki/assets/resources/update_cloud.png'),'在线更新日志')
         self.online_updateMessageAct.triggered.connect(self.online_updateMessage)
 
-        self.settingsAction = QAction('设置', self)
+        self.settingsAction = QAction(QIcon('./tsuki/assets/resources/open_list.png'),'设置', self)
         settingicon = "tsuki/assets/ico/setting.ico"
         self.settingsAction.setIcon(QIcon(settingicon))
         self.settingsAction.triggered.connect(self.openSettingsWindow)
@@ -528,7 +640,7 @@ class TsukiReader(QMainWindow):
         pingServerManuallyMenu.addAction(self.pingServerManuallyAct)
         pingServerManuallyMenu.addAction(self.url_msgAct)
 
-        settings1Menu = menubar.addMenu(QIcon('logo.ico'),'设置')
+        settings1Menu = menubar.addMenu(QIcon('./tsuki/assets/resources/settings.png'),'设置')
         settings1Menu.addAction(self.settingsAction)
 
     def openSettingsWindow(self):
@@ -589,16 +701,30 @@ class TsukiReader(QMainWindow):
         try:
             currentWidget = self.tabWidget.currentWidget()
             font, ok = QFontDialog.getFont()
+
             if ok:
                 currentWidget.setFont(font)
                 font_name = font.family()
-                self.statusBar().showMessage(f'TsukiFont✔: {font_name} 字体已经成功应用！')
+                # 使用QLabel和HTML标签添加图标
+                message = QLabel()
+                message.setText(
+                    f' TsukiFont <img src="./tsuki/assets/resources/done.png" width="16" height="16">: {font_name} 字体已经成功应用！')
+                logging.info(f"[Log/INFO]Change Font: {font_name}")
+                self.statusBar().addWidget(message)
                 self.save_font_family_to_cfg(font_name)
-            elif ok is None:
-                self.statusBar().showMessage(f'TsukiFont❌: 字体没能更改！')
+            else:
+                message = QLabel()
+                message.setText(
+                    f' TsukiFont <img src="./tsuki/assets/resources/error.png" width="16" height="16">: 字体没能更改！')
+                logger.warning("没能更改")
+                self.statusBar().addWidget(message)
         except Exception as e:
-            self.statusBar().showMessage(f'TsukiFont❌: 发生错误！！内容: {e}')
+            message = QLabel()
+            message.setText(
+                f' TsukiFont <img src="./tsuki/assets/resources/error.png" width="16" height="16">: 发生错误！！内容: {e}')
+            self.statusBar().addWidget(message)
             print("[Log/Error]Change Font Error:", e)
+            logger.error("[Log/Error]Change Font Error:", e)
 
     def save_font_family_to_cfg(self, font_family):
         config = configparser.ConfigParser()
@@ -608,11 +734,13 @@ class TsukiReader(QMainWindow):
         if not os.path.exists(cfg_dir):
             os.makedirs(cfg_dir)
             print("[INFO]SAVE")
+            logger.info("[Log/INFO]SAVE")
 
         cfg_path = os.path.join(cfg_dir, 'tn_font_family.ini')
         with open(cfg_path, 'w') as configfile:
             config.write(configfile)
             print(f"[INFO]SAVE {cfg_path}")
+            logger.info(f"[Log/INFO]SAVE {cfg_path}")
 
     def read_font_family_from_cfg(self):
         cfg_file = "tsuki/assets/app/cfg/font/tn_font_family.ini"
@@ -638,7 +766,7 @@ class TsukiReader(QMainWindow):
 
     def mathTools(self):
         self.statusBar().showMessage('TsukiMathTools🔰: MathTools Loading Successful !')
-        print("[Log/INFO]The calculation tool has been successfully loaded and initialization is complete")
+        logger.info("[Log/INFO]The calculation tool has been successfully loaded and initialization is complete")
         text_edit = self.tabWidget.currentWidget()
         cursor = text_edit.textCursor()
         selected_text = cursor.selectedText().strip()
@@ -646,23 +774,23 @@ class TsukiReader(QMainWindow):
         try:
             result = eval(math_expr.replace("%", "/100"))
             self.statusBar().showMessage(f'计算结果✔: {result}')
-            print(f"[Log/Math]Succeed: MathTools Running , Back: Succeed,{result}")
+            logger.info(f"[Log/Math]Succeed: MathTools Running , Back: Succeed,{result}")
             if not isinstance(result, (int, float)):
                 self.statusBar().showMessage('TsukiMathTools🚫: 不是数学表达式！')
-                print("[Log/Math]MathTools Running, Back: Not a Math Expression")
+                logger.error("[Log/Error]miscalculated")
         except Exception as e:
             self.statusBar().showMessage(f'计算错误❌: {e}')
-            print("[Log/Error]miscalculated")
+            logger.error("[Log/Error]miscalculated")
 
     def resetFont(self):
         currentWidget = self.tabWidget.currentWidget()
         font = QFont()
         font.setFamily("Microsoft YaHei UI")  # 设置字体家族为微软雅黑
-        print("[Log/INFO]Changed the font to Microsoft Yahei UI")
+        logger.info("[Log/INFO]Changed the font to Microsoft Yahei UI")
         font_name = font.family()
         currentWidget.setFont(font)
         self.statusBar().showMessage(f'TsukiFontReset: 字体已经成功重置为[{font_name}]！')
-        print(f"[Log/INFO]ReSet Font {font_name}")
+        logger.info("[Log/INFO]ReSet Font")
 
     def openFile(self, fileName):
         if fileName == "":
@@ -699,12 +827,12 @@ class TsukiReader(QMainWindow):
                 window_title = f"TsukiNotes - ['{file_name}.{file_extension[1:]}']"
                 self.setWindowTitle(window_title)
                 self.statusBar().showMessage(f'TsukiOpen✔: 文件 [{fileName}] 已成功在TsukiNotes内打开！')
-                print(f"[Log/INFO]Open File Succeed: {fileName} Encoding: {encoding}\n")
+                logger.info(f"[Log/INFO]Open File Succeed: {fileName} Encoding: {encoding}\n")
 
             except Exception as e:
                 QMessageBox.critical(self, 'Open File', f'失败了❌❗: {str(e)}')
                 self.statusBar().showMessage(f'TsukiOF❌: 文件[{fileName}]打开失败！Error:[{e}]')
-                print("[Log/ERROR]ERROR Open File:", {e})
+                logger.error(f"[Log/ERROR]Open File Error: {e}")
     def _load_file_content(self, fileName, text_edit, encoding):
         try:
             with open(fileName, 'r', encoding=encoding, errors='ignore') as file:
@@ -713,13 +841,13 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Load File Content', f'失败了❌❗: {str(e)}')
             self.statusBar().showMessage(f'TsukiLFC❌: 文件[{fileName}]内容加载失败！Error:[{e}]')
-            # debug日志
-            print(f"[Error]OpenFile:{e}")
+            logger.error(f"[Log/ERROR]Load File Content Error: {e}")
 
     def newFile(self):
         textEdit = QPlainTextEdit()
         textEdit.setFont(self.defaultFont)
-        self.tabWidget.addTab(textEdit, "未命名文档")
+        self.tabWidget.addTab(textEdit, QIcon('./tsuki/assets/resources/text_file.png'),"未命名文档")
+        logger.info("[Log/INFO]New File")
         textEdit.setLineWrapMode(QPlainTextEdit.NoWrap)
         textEdit.textChanged.connect(self.updateStatusLabel)
 
@@ -745,13 +873,16 @@ class TsukiReader(QMainWindow):
             if file_name != tab_text:
                 response = QMessageBox.question(self, '重命名', f'你确定想要将文件名称->> {file_name}?✔',
                                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                logger.info(f"[Log/INFO]Rename File: {tab_text} -> {file_name}")
 
                 if response == QMessageBox.Yes:
                     self.tabWidget.setTabText(current_tab_index, os.path.basename(file_name))
+                    logger.info(f"[Log/INFO]Rename File: {tab_text} -> {file_name}")
 
         text_content = current_tab_widget.toPlainText()
         encoding, ok = QInputDialog.getItem(self, "选择编码", "编码类型🔰:",
                                             ["UTF-8", "ASCII", "ISO-8859-1"], 0, False)
+        logger.info(f"[Log/INFO]Save File: {file_name} Encoding: {encoding}")
 
         if not ok:
             return
@@ -760,12 +891,14 @@ class TsukiReader(QMainWindow):
             with open(file_name, 'w', encoding=encoding.lower(), errors='ignore') as file:
                 file.write(text_content)
                 self.statusBar().showMessage(f'TsukiSave: 文件 [{file_name}] 保存成功！')
+                logger.info(f"[Log/INFO]Save File: {file_name} Encoding: {encoding}")
                 self.tabWidget.setTabText(current_tab_index, os.path.basename(file_name))
                 self.tabWidget.setTabToolTip(current_tab_index, file_name)
                 self.tabWidget.setCurrentIndex(current_tab_index)
         except Exception as e:
             QMessageBox.critical(self, 'Save File', f'An error occurred: {str(e)}')
             self.statusBar().showMessage(f'TsukiSave: 保存失败！原因:{str(e)}')
+            logger.error(f"[Log/ERROR]Save File Error: {e}")
 
     def closeFile(self):
         m = self.tabWidget.currentIndex()
@@ -784,11 +917,15 @@ class TsukiReader(QMainWindow):
                 # tab>1=ok
                 self.tabWidget.removeTab(index)
                 self.statusBar().showMessage(f'TsukiTab✔: 成功关闭标签页,还有 {tab_now} 个Tab保留')
+                logger.info(f"[Log/INFO]Close Tab: {index}")
             else:
                 self.statusBar().showMessage(f'TsukiTab🚫: 无法关闭这个标签页,因为他是最后一个,如需关闭软件,请按退出软件! -注意保存您的文件')
+                logger.error(f"[Log/ERROR]Close Tab Error")
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
+            logger.error(f"[Log/ERROR]Close Tab Error: {e}")
             self.statusBar().showMessage(f'TsukiTab❌: 关闭标签页失败！详见MessageBox！')
+
 
     def checkForUpdates(self):
         version_url = 'https://inkwhispers.us.kg/update/zwrite/version.txt'
@@ -799,29 +936,35 @@ class TsukiReader(QMainWindow):
                 latest_version = response.text.strip()
                 self.statusBar().showMessage(
                     f'TsukiUpdate: 检测到云端版本号为:[ {latest_version} ] | 本地版本号:[ {version} ] 开始对比...')
+                logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
 
                 if latest_version == self.current_version:
                     QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
                                             f'当前已经是最新版本✔: {latest_version} ！')
                     self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！您已经是最新的版本：{latest_version}')
+                    logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
 
                 elif latest_version < self.current_version:
                     QMessageBox.warning(self, 'TsukiNotes',
                                         f'🚫您太超前了！云端没你更新快！！🚫')
                     self.statusBar().showMessage(f'TsukiUpdate❓: [ 当前版本号{version} > 云端{latest_version} ] 您可能不是Fv通道')
+                    logger.warning(f"[Log/WARNING]Check For Updates: {latest_version}")
 
                 elif latest_version > self.current_version:
                     reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
                                                  f'🔰✔叮！\nTsukiNotes有全新版本啦！\n最新版本号: {latest_version}\n您的版本号: {version} \n 文件: [Tsuki Notes {latest_version}]',
                                                  QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                     self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！您有新版本：{latest_version}')
+                    logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
 
                     if reply == QMessageBox.Yes:
                         webbrowser.open(
                             'https://zstlya-my.sharepoint.com/:f:/g/personal/zz_zstlya_onmicrosoft_com/EiGVt3ZyYFZPgQu5qxsTNIQB2y0UjGvjBKMRmOfZJ-L3yg?e=iZD2iL')
+                        logger.info(f"[Log/INFO]open web")
                 else:
                     QMessageBox.warning(self, '检测更新',
                                         f'[未能成功检测最新版本]\n可能是你的客户端过新导致的\n我们建议您尝试手动更新！\n当前版本: {version}|云端: {latest_version}\n')
+                    logger.warning(f"[Log/ERROR]Warn,Client Version So New")
             else:
                 QMessageBox.warning(self, '检测更新失败',
                                     f'[无法获取版本信息]\n这可能是因为服务器掉线导致的\n当然您需要自行检测您的网络是否正常\n我们将为你启动备选方案\n请您尝试手动更新吧\n是否打开？\n ')
@@ -829,6 +972,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '检测更新|错误',
                                  f'出错啦！ \nOccurred:\n{str(e)}\n 请关闭您的VPN或加白inkwhispers.us.kg\n 或者尝试手动更新吧')
+            logger.error(f"[Log/ERROR]Check For Updates Error: {e}")
             self.statusBar().showMessage(f'TsukiUpdate❌: 检测失败！')
 
     def url_msg(self):
@@ -843,9 +987,11 @@ class TsukiReader(QMainWindow):
             if response.status_code == 200:
                 latest_version = response.text.strip()
                 self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！云端版本号为:[ {latest_version} ] 服务器状态：正常')
+                logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
                 QMessageBox.information(self, 'TSUKI_BACK—Information',
                                         f' 返回成功\n 云端Version: {latest_version} ！\n 服务器：正常')
                 self.statusBar().showMessage(f'TsukiBack✔：云端返回数值：{latest_version}')
+
 
         except:
             url_text = (f"<h1> TsukiNotes </h1>"
@@ -859,6 +1005,7 @@ class TsukiReader(QMainWindow):
 
             QMessageBox.about(self, "TsukiBack", url_text)
             self.statusBar().showMessage(f'TsukiUpdate❌🚫: 检测失败！请尝试关闭VPN测试[有可能是服务器寄了]')
+            logger.error(f"[Log/ERROR]Check For Updates Error")
 
     def Show_Auto_Update2(self):
         current_version = self.current_version
@@ -891,25 +1038,27 @@ class TsukiReader(QMainWindow):
             webbrowser.open(
                 'https://zstlya-my.sharepoint.com/:f:/g/personal/zz_zstlya_onmicrosoft_com/EiGVt3ZyYFZPgQu5qxsTNIQB2y0UjGvjBKMRmOfZJ-L3yg?e=iZD2iL')
             self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择OneDrive下载源！已经为您跳转至浏览器')
+            logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == source2Button:
             webbrowser.open('https://www.123pan.com/s/ZhtbVv-gagV3.html')
             self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择123Pan下载源！已经为您跳转至浏览器')
         elif msgBox.clickedButton() == websiteButton:
             webbrowser.open('https://inkwhispers.us.kg/')
             self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择浏览Inkwhispers！已经为您跳转至浏览器')
-            print(f"[Log/INFO]Open Web {webbrowser.open}")
+            logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == newversionButton:
             webbrowser.open('https://inkwhispers.us.kg/tn/update.txt')
+            logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == cancelButton:
             self.statusBar().showMessage(f'TsukiUpdate[2]🚫: 您已取消操作')
-            print("[Log/Channel]User Channel ")
+            logger.info(f"[Log/INFO]UserChannel")
             pass
 
     def versionnow(self):
         version = self.current_version
         QMessageBox.information(self, '当前版本', f'当前版本：[ {version} ]')
         self.statusBar().showMessage(f'✔叮叮！检测成功！您当前版本为：{version}')
-        print("[Log/INFO]Open VersionNow.def look New Version\n")
+        logger.info(f"[Log/INFO]Open VersionNow.def look New Version\n")
 
     def aboutMessage(self):
         current_version = self.current_version
@@ -918,14 +1067,14 @@ class TsukiReader(QMainWindow):
                      f"{current_version} FullVersion</strong></p>"
         QMessageBox.about(self, f"About TsukiNotes | #{versiongj}", about_text)
         self.statusBar().showMessage(f'TsukiBack✔: 您打开了AboutMessage')
-        print("[Log/Info]Open AboutMessage.def\n")
+        logger.info(f"[Log/INFO]Open AboutMessage.def look New Version\n")
 
     def aboutDetails(self):
         versiongj = self.version_gj
         about_text = f"[软件信息]\n | 软件出品:MoonZZ \n | 时间：{self.update_Date}\n | {self.version_td} \nInkwhispers&ZZBuAoYe 2024©Copyright\nInkwhispers.us.kg"
         QMessageBox.about(self, f"AboutSoftWare | #{self.version_gj}", about_text)
         self.statusBar().showMessage(f'TsukiINFO: [{versiongj}] | [{self.version_td}] | [{self.update_Date}] ')
-        print("[Log/INFO]Open AboutDetails.def\n")
+        logger.info(f"[Log/INFO]Open AboutDetails.def\n")
 
     def updateMessage(self):
         version = self.current_version  # 版本
@@ -939,13 +1088,17 @@ class TsukiReader(QMainWindow):
             f"<p style='text-align: center;'>Version:{version} {version_td}[{update_time}]</p>"
             "</html>"
             f"============================================<br>"
-            f" [质量]1.修复OpenFile打不开文本的问题<br>"
-            f" [质量]2.修复高亮显示无效问题<br>"
-            f" [修复]3.修复高亮显示字体无加粗问题<br>"
-            f" [修复]4.修复高亮显示关不掉问题<br>"
-            f" [修复]5.修复字体家族显示问题<br>"
-            f" [优化]6.优化整体结构<br>"
-            f" [优化]7.增加了print便于debug<br>"
+            f" [质量]1.优化logo<br>"
+            f" [质量]2.美化图标<br>"
+            f" [修复]3.优化排版<br>"
+            f" [修复]4.StatusBar进入测试优化阶段[现：修改小部分]<br>"
+            f" [修复]5.优化search窗口<br>"
+            f" [优化]6.增加assets/resource/<br>"
+            f" [优化]7.正式采用logging替换print方式，并且完善所有logging，完成了logging的配置与输出<br>"
+            f" [新增]8.日志自动保存<br>"
+            f" [新增]9.日志自动检测时差并删除<br>"
+            f" [新增]10.背景重置功能"
+            f" [新增]11.新增多张新背景图，修改默认背景色"
             f"=============================================<br>"
             f"<p style='text-align: center;'> || FullVersion ||</p>"
             f"<p style='text-align: center;'>[内部版本号:{versiontime}]</p>"
@@ -969,7 +1122,7 @@ class TsukiReader(QMainWindow):
 
         dialog.exec_()
         self.statusBar().showMessage('TsukiBack✔: 您打开了本地更新日志')
-        print(f"[Log/INFO]Open Update Informathion Succeed")
+        logger.info(f"[Log/INFO]Open Update Informathion Succeed")
 
     def online_updateMessage(self):
         try:
@@ -980,7 +1133,7 @@ class TsukiReader(QMainWindow):
             response = requests.get(online_update, timeout=60)
             response.raise_for_status()  # 检查响应是否成功
             update_text = response.text
-            print("[Log/INFO]Get update.txt ing..... " + f"{online_update}\n")
+            logger.info(f"[Log/INFO]Get update.txt Succeed " + f"{online_update}\n")
             now_version_response = requests.get(now_version_url, timeout=60)
             now_version_response.raise_for_status()
             now_version = now_version_response.text.strip()
@@ -988,29 +1141,30 @@ class TsukiReader(QMainWindow):
             if version.parse(current_version) < version.parse(now_version):
                 update_text += "\n== == == == == == Tips == == == == == ==\n 您的版本可能太低了，并不适用该更新内容 \n "
                 QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} FullVersion", update_text)
-                print(f"[Log/INGO]Parse version RESULT:" + f"{current_version} < {now_version}\n")
+                logger.info(f"[Log/INFO]Parse version RESULT:" + f"{current_version} < {now_version}\n")
             elif version.parse(current_version) == version.parse(now_version):
                 update_text += f"\n== == == == == == 当前版本 == == == == == ==\n 您的版本可以适用该更新日志 \n"
                 QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} FullVersion", update_text)
                 self.statusBar().showMessage(f'TsukiBack✔: 您打开了更新日志，获取目标在线日志ing...')
-                print(f"[Log/INFO]Open UpdateMsg Succeed,RESULT:" + f"{current_version} = {now_version}\n")
+                logger.info(f"[Log/INFO]Open UpdateMsg Succeed,RESULT:" + f"{current_version} = {now_version}")
             else:
                 QMessageBox.warning(self, "TsukiNotes更新日志",
                                         f" 更新日志获取失败！\n 请求网址： {online_update}\n 请您尝试查看离线日志\n 10秒内请勿再次尝试")
                 self.statusBar().showMessage(f"TsukiBack❌: 更新日志获取失败！[目标：{online_update}]")
-                print(f"[Log/Error]{online_update} get error\n")
+                logger.info(f"[Log/INFO]Error!")
+
         except requests.Timeout:
             QMessageBox.warning(self, "TsukiNotes更新日志", " 请求超时，请检查您的网络连接并重试。")
             self.statusBar().showMessage(f"TsukiBack❌: 请求超时，更新日志获取失败！")
-            print(f"[Log/Error]GetError|Time Out|\n")
+            logger.info(f"[Log/INFO]Error!")
         except requests.RequestException as e:
             QMessageBox.warning(self, "TsukiNotes更新日志", f" 更新日志获取失败！[{e}]\n 请尝试查看离线本地日志")
             self.statusBar().showMessage(f"TsukiBack❌: 更新日志获取失败！[{e}]")
-            print(f"[Log/Error]online.UpdateMsg Get Error {e}\n")
+            logger.info(f"[Log/INFO]Error!")
         except Exception as e:
             QMessageBox.warning(self, "TsukiNotes更新日志", f" 发生异常!\n 请查看具体错误信息并进行修复\n错误内容请通过cmd Debug")
             self.statusBar().showMessage(f"TsukiBack❌: 更新日志获取失败！[{e}]")
-            print(f"[Log/Error]UpdateMsg.all Get Error {e}\n")
+            logger.info(f"[Log/INFO]Error!",e)
 
     def renameTab(self, index):
         tab_name, ok = QInputDialog.getText(self, '重命名', '新的名称:')
@@ -1028,7 +1182,7 @@ class TsukiReader(QMainWindow):
         index = self.tabWidget.tabBar().tabAt(event.pos())
         if index >= 0:
             menu = QMenu(self)
-            rename_action = QAction('重命名标签', self)
+            rename_action = QAction(QIcon('./tsuki/assets/resources/font_size_reset_tab.png'),'重命名标签', self)
             rename_action.triggered.connect(lambda: self.renameTab(index))
             menu.addAction(rename_action)
             menu.exec_(event.globalPos())
@@ -1085,6 +1239,7 @@ class TsukiReader(QMainWindow):
             if self.found_positions:
                 search_result_dialog = SearchResultDialog(
                     [f"找到关键词 '{self.search_text}' 的位置：{pos}" for pos in self.found_positions], self)
+                logger.info(f"[Log/INFO]Search Result:{self.found_positions}")
                 message = f'TsukiSearch✔: 查找关键词[{self.search_text}]成功！|| 所有结果：[{"、".join([str(pos) for pos in self.found_positions])}]'
                 self.statusBar().showMessage(message)
                 result = search_result_dialog.exec_()
@@ -1101,6 +1256,7 @@ class TsukiReader(QMainWindow):
             else:
                 QMessageBox.information(self, '搜索结果', f'抱歉，文本内无关键字 "{self.search_text}"')
                 self.statusBar().showMessage(f'TsukiSearch❌: 无关键词"{self.search_text}"')
+                logger.info(f"[Log/INFO]Note Have Result{self.search_text}")
  # setting函数===================================================================
     def background_color(self):
         try:
@@ -1112,15 +1268,41 @@ class TsukiReader(QMainWindow):
                 current_widget = self.tabWidget.currentWidget()
                 style_sheet = f'background-color: {color.name()}; color: {text_color};'
                 current_widget.setStyleSheet(style_sheet)
-            
-            # 保存设置
+
+                # 保存设置
                 self.save_background_color(color.name(), text_color)
-            
-                QMessageBox.information(self, '提示', f'背景色已经修改为 {color.name()}，自动修改字体颜色为 {text_color}，喵~')
-                self.statusBar().showMessage(f'TsukiBC✔: 背景色设置为 {color.name()} 成功，已成功修改字体颜色为 {text_color}！')
+
+                QMessageBox.information(self, '提示',
+                                        f'背景色已经修改为 {color.name()}，自动修改字体颜色为 {text_color}，喵~')
+                self.statusBar().showMessage(
+                    f'TsukiBC✔: 背景色设置为 {color.name()} 成功，已成功修改字体颜色为 {text_color}！')
+                logger.info(f"[Log/INFO] Background Color: {color.name()}")
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
             self.statusBar().showMessage(f'TsukiBC❌: 背景色重置失败！详见MessageBox！')
+            logger.error(f"[Log/ERROR] Background Color Error: {str(e)}")
+
+    def background_image(self):
+        try:
+            file_dialog = QFileDialog(self)
+            file_path, _ = file_dialog.getOpenFileName(self, '选择背景图片', '',
+                                                       'Images (*.png *.xpm *.jpg *.bmp *.gif)')
+
+            if file_path:
+                current_widget = self.tabWidget.currentWidget()
+                style_sheet = f'background-image: url({file_path});'
+                current_widget.setStyleSheet(style_sheet)
+
+                # 保存设置
+                self.save_background_image(file_path)
+
+                QMessageBox.information(self, '提示', f'背景图片已经修改为 {file_path}，喵~')
+                self.statusBar().showMessage(f'TsukiBC✔: 背景图片设置为 {file_path} 成功！')
+                logger.info(f"[Log/INFO] Background Image: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
+            self.statusBar().showMessage(f'TsukiBC❌: 背景图片设置失败！详见MessageBox！')
+            logger.error(f"[Log/ERROR] Background Image Error: {str(e)}")
 
     def save_background_color(self, bg_color, text_color):
         config = configparser.ConfigParser()
@@ -1132,6 +1314,7 @@ class TsukiReader(QMainWindow):
         os.makedirs('tsuki/assets/app/cfg/background/', exist_ok=True)
         with open('tsuki/assets/app/cfg/background/background_color.ini', 'w') as configfile:
             config.write(configfile)
+            logger.info(f"[Log/INFO]Background Color Saved:{bg_color}")
 
     def load_background_color(self):
         config = configparser.ConfigParser()
@@ -1145,8 +1328,10 @@ class TsukiReader(QMainWindow):
             current_widget.setStyleSheet(style_sheet)
         
             self.statusBar().showMessage(f'TsukiBC✔: 成功加载背景色 {bg_color} 和字体颜色 {text_color}！')
+            logger.info(f"[Log/INFO]Background Color Loaded:{bg_color}")
         except Exception as e:
             self.statusBar().showMessage(f'TsukiBC❓: 未找到保存的背景色设置或加载失败。')
+            logger.error(f"[Log/ERROR]Background Color Load Error:{str(e)}")
 
     def reset_background_color(self):
         try:
@@ -1154,7 +1339,7 @@ class TsukiReader(QMainWindow):
             default_text_color = 'black'  # 默认文字色
             current_widget = self.tabWidget.currentWidget()
             current_widget.setStyleSheet(f'background-color: {default_bg_color}; color: {default_text_color};')
-            print(f"[Log/INFO]成功[{default_bg_color}],[{default_text_color}]已经被写入重新配置文件夹")
+            logger.info(f"[Log/INFO]Background Color Reset:{default_bg_color}")
             self.save_background_color(default_bg_color, default_text_color)
 
             QMessageBox.information(self, '提示', f'背景色已经重置为默认值 {default_bg_color}，喵~')
@@ -1162,7 +1347,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
             self.statusBar().showMessage(f'TsukiBC_R❌: 背景色重置失败！详见MessageBox！')
-            print("[Log/Error]设置背景色失败")
+            logger.error(f"[Log/ERROR]Background Color Reset Error:{str(e)}")
 
     def save_background_color(self, bg_color, text_color):
         try:
@@ -1175,9 +1360,11 @@ class TsukiReader(QMainWindow):
             os.makedirs('tsuki/assets/app/cfg', exist_ok=True)
             with open('tsuki/assets/app/cfg/background/background_color.ini', 'w') as configfile:
                 config.write(configfile)
+                logger.info(f"[Log/INFO]Background Color Saved:{bg_color}")
         except Exception as e:
             QMessageBox.critical(self, '错误', f'保存背景色设置时发生错误：{str(e)}')
             self.statusBar().showMessage(f'TsukiBC_Save❌: 背景色设置保存失败！')
+            logger.error(f"[Log/ERROR]Background Color Save Error:{str(e)}")
 
     def setTextEditTransparency(self, transparency=35):
         transparency_value = transparency / 100.0
@@ -1190,6 +1377,7 @@ class TsukiReader(QMainWindow):
                 text_edit.setStyleSheet(stylesheet)
 
         self.statusBar().showMessage(f'透明度设置为 {transparency}%')
+        logger.info(f"[Log/INFO]TextEdit Transparency Set:{transparency}%")
 
     # 添加用户 API 输入对话框
     def setAPIBackgroundImage(self):
@@ -1214,11 +1402,7 @@ class TsukiReader(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, '设置背景图片', f'失败了❌❗: {str(e)}')
                 self.statusBar().showMessage(f'TsukiBG❌: 背景图片设置失败！原因:{str(e)}')
-
-    def resetBackgroundImage(self):
-        self.setBackgroundImageFromFile('tsuki/assets/default_background.jpg')
-        self.saveBackgroundSettings('')
-        self.statusBar().showMessage('TsukiBG✔: 已恢复默认背景图片！')
+                logger.error(f"[Log/ERROR]Background Image Set Error:{str(e)}")
 
     def clearTempFolder(self):
         temp_folder = 'tsuki/assets/app/temp'
@@ -1227,9 +1411,11 @@ class TsukiReader(QMainWindow):
                 shutil.rmtree(temp_folder)
             os.makedirs(temp_folder)
             self.statusBar().showMessage('TsukiBG✔: 临时文件夹已清空！')
+            logger.info(f"[Log/INFO]Temp Folder Cleared:{temp_folder}")
         except Exception as e:
             QMessageBox.critical(self, '清空临时文件夹', f'失败了❌❗: {str(e)}')
             self.statusBar().showMessage(f'TsukiBG❌: 清空临时文件夹失败！原因:{str(e)}')
+            logger.error(f"[Log/ERROR]Temp Folder Clear Error:{str(e)}")
         '''
     def setAutoUpdateInterval(self):
         interval, ok = QInputDialog.getInt(self, '设置自动更新背景时间', '请输入自动更新背景图片的时间间隔（分钟）:',
@@ -1245,28 +1431,27 @@ class TsukiReader(QMainWindow):
             palette = QPalette()
             palette.setBrush(QPalette.Background, QBrush(pixmap))
             self.setPalette(palette)
+            self.statusBar().showMessage(f'TsukiBG✔: 背景图片已成功设置！')
+            logger.info(f"[Log/INFO]Background Image Set:{file_name}")
         except Exception as e:
             QMessageBox.critical(self, '设置背景图片', f'失败了❌❗: {str(e)}')
             self.statusBar().showMessage(f'TsukiBG❌: 背景图片设置失败！原因:{str(e)}')
+            logger.error(f"[Log/ERROR]Background Image Set Error:{str(e)}")
 
     # 更新 setBackgroundImage 方法以保存设置到配置文件
     def setBackgroundImage(self):
         file_name, _ = QFileDialog.getOpenFileName(self, '选择背景图片[内测]', '',
                                                    'Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)')
+
         if not file_name:
             return
         self.setBackgroundImageFromFile(file_name)
         self.saveBackgroundSettings(file_name)
 
+
     def saveBackgroundSettings(self, file_name):
         settings = QSettings('TsukiReader', 'Background')
         settings.setValue('backgroundImage', file_name)
-
-    def loadBackgroundSettings(self):
-        settings = QSettings('TsukiReader', 'Background')
-        file_name = settings.value('backgroundImage', '')
-        if file_name:
-            self.setBackgroundImageFromFile(file_name)
 
     def loadBackgroundSettings(self):
         config_path = "tsuki/assets/app/cfg/background/TN_BackGround.ini"
@@ -1277,7 +1462,7 @@ class TsukiReader(QMainWindow):
 
         config = configparser.ConfigParser()
         config.read(config_path)
-
+        logger.info(f"[Log/INFO]Background Settings Loaded:{config_path}")
         if 'Background' in config:
             background_path = config['Background'].get('ImagePath', '')
             transparency = config['Background'].getint('Transparency', 100)
@@ -1288,6 +1473,7 @@ class TsukiReader(QMainWindow):
                 palette.setBrush(QPalette.Background, QBrush(pixmap))
                 self.setPalette(palette)
                 self.statusBar().showMessage(f'背景图片 [{background_path}] 已加载')
+                logger.info(f"[Log/INFO]Background Settings Loaded:{background_path}")
 
             self.setTextEditTransparency(transparency)
 
@@ -1370,6 +1556,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生错误：{str(e)}')
             self.statusBar().showMessage(f'TsukiFS✔: 字体大小初始化失败！详见MessageBox！')
+            logger.error(f"[Log/ERROR]Font Size Initialization Failed:{str(e)}")
 
     def re_icon_setting(self):
         def download_and_set_icon(url, target_path):
@@ -1384,6 +1571,7 @@ class TsukiReader(QMainWindow):
                 return True
             except Exception as e:
                 QMessageBox.warning(self, '错误下载', f"开香槟，下载失败咯，错误代码:\n {str(e)}")
+                logger.error(f"[Log/ERROR]Icon Download Failed:{str(e)}")
                 return False
         status_bar = self.statusBar()
         icon_path = "tsuki/assets/ico/logo.ico"
@@ -1395,6 +1583,7 @@ class TsukiReader(QMainWindow):
             if download_and_set_icon(download_url, icon_path) or download_and_set_icon(alt_download_url, icon_path):
                 status_bar.showMessage('ICON Setting Succeeded')
                 QMessageBox.information(self, 'LOADING', 'New Icon Set......')
+                logger.info("[Log/INFO]Icon Setting Succeeded")
                 icon = QIcon(icon_path)
                 self.setWindowIcon(icon)
                 self.updateStatusLabel()
@@ -1405,13 +1594,16 @@ class TsukiReader(QMainWindow):
                     if manual_download_path:
                         if download_and_set_icon(manual_download_url, manual_download_path):
                             QMessageBox.information(self, 'Manual Download Success', '手动下载并替换成功')
+                            logger.info("[Log/INFO]Manual Download Success")
                             icon = QIcon(manual_download_path)
                             self.setWindowIcon(icon)
                             self.updateStatusLabel()
                         else:
                             QMessageBox.warning(self, 'Manual Download Failed', '手动下载并替换失败')
+                            logger.error("[Log/ERROR]Manual Download Failed")
         else:
             QMessageBox.warning(self, 'Permission Denied', '需要管理员权限来移动文件，请以管理员身份运行程序！')
+            logger.error("[Log/ERROR]Permission Denied:Need Admin Permission")
             return
     def diy_icon_setting(self):
         options = QFileDialog.Options()
@@ -1422,11 +1614,13 @@ class TsukiReader(QMainWindow):
             status_bar = self.statusBar()
             QMessageBox.warning(self, 'File Not Found文件未找到', '未选择文件或选择无效文件路径！')
             status_bar.showMessage(f'TsukiIS🚫: 您未选择任何文件或选择了无效的文件路径！')
+            logger.error("[Log/ERROR]File Not Found:File Not Found")
             return
 
         # 确保用户是管理员
         if not ctypes.windll.shell32.IsUserAnAdmin():
             QMessageBox.warning(self, 'Permission Denied', '需要管理员权限来移动文件，请以管理员身份运行程序！\n Error:{e}')
+            logger.error("[Log/ERROR]Permission Denied:Need Admin Permission")
             return
 
         target_directory = os.path.join('tsuki', 'assets', 'icon')
@@ -1439,9 +1633,11 @@ class TsukiReader(QMainWindow):
             shutil.move(icon_diy_path, target_path)
             status_bar = self.statusBar()
             status_bar.showMessage(f'TsukiIS: 自定义图标设置成功[{target_path}]')
+            logger.info("[Log/INFO]Custom Icon Set Successfully")
             message_box = QMessageBox()
             message_box.setWindowTitle('自定义ICON[测试]:')
             message_box.setText('Icon set successfully\n新的图标设置成功！')
+            logger.info("setting succeed")
             font = QFont("Microsoft YaHei", 12)
             message_box.setFont(font)
             message_box.setIcon(QMessageBox.Information)
@@ -1451,6 +1647,7 @@ class TsukiReader(QMainWindow):
             self.updateStatusLabel()
         except Exception as e:
             QMessageBox.warning(self, 'Error', f'An error occurred: {str(e)}')
+            logger.error(f"[Log/ERROR]Custom Icon Set Failed:{str(e)}")
 
     def iconpath_check_a1(self):
         icon_path = "tsuki/assets/ico/logo.ico"
@@ -1460,16 +1657,18 @@ class TsukiReader(QMainWindow):
             QMessageBox.warning(self, '提示',
                                 f'错误提示: {icon_path} 并没被成功引用，但是这并不会影响实际使用！只是会导致icon处变成默认的样子\n{icon2_path}正在寻找！')
             self.statusBar().showMessage(f'TsukiAssets❓: 您的assets中缺少了来自: {icon_path} 的logo.ico 但是这并不会影响实际使用')
-
+            logger.warning(f"[Log/WARNING]Missing Icon:{icon_path}")
         if not os.path.exists(icon2_path):
             QMessageBox.warning(self, '提示',
                                 '您的assets中缺少了old_logo.ico\n注意：这完全不会影响只是提醒您您可能缺少了东西，您可以自行核对！')
             self.statusBar().showMessage(f'TsukiAssets: 您的assets中缺少了 {icon2_path} 但是这并不会影响实际使用')
+            logger.warning(f"[Log/WARNING]Missing Icon:{icon2_path}")
 
         else:
            checkmsg = (f'恭喜， {icon_path}和{icon2_path}都正常')
            QMessageBox.about(self, 'Tips:', checkmsg)
            self.statusBar().showMessage(f'TsukiAssets✔: 您的assets看上去并没被删减！')
+           logger.info("[Log/INFO]Icon Check Succeeded")
 
     def total_setting(self):
         try:
@@ -1512,6 +1711,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'发生异常：{str(e)}')
             self.statusBar().showMessage(f'TsukiTotalSetting❌: 发生异常：{str(e)}')
+            logger.error(f"[Log/ERROR]Total Setting Failed:{str(e)}")
 
     def toggle_highlight_keywords(self, state):
         if state == Qt.Checked:
@@ -1535,6 +1735,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'保存设置时发生异常：{str(e)}')
             self.statusBar().showMessage(f'TsukiSave❌: 保存设置时发生异常：{str(e)}')
+            logger.error(f"[Log/ERROR]Save Settings Failed:{str(e)}")
 
     def applySettings(self, include_whitespace, custom_lines):
         try:
@@ -1555,6 +1756,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'应用设置时发生异常：{str(e)}')
             self.statusBar().showMessage(f'TsukiApplySetting❌: 应用设置时发生异常：{str(e)}')
+            logger.error(f"[Log/ERROR]Apply Settings Failed:{str(e)}")
 
     def addKeywordHighlight(self):
         try:
@@ -1563,8 +1765,36 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, '错误', f'添加关键字高亮时发生异常：{str(e)}')
             self.statusBar().showMessage(f'添加关键字高亮时发生异常：{str(e)}')
+            logger.error(f"[Log/ERROR]Add Keyword Highlight Failed:{str(e)}")
 
+    def reset_background(self):
+        file_path = './tsuki/assets/app/cfg/background/TN_BackGround.ini'
+        config = configparser.ConfigParser()
+        filename = "TN_BackGround.ini"
+        defaultimage = "./tsuki/assets/app/default/default_light.png"
+        if os.path.exists(file_path):
+            config.read(file_path)
+            if 'Background' not in config.sections():
+                config.add_section('Background')
+            config.set('Background', 'imagepath', './tsuki/assets/app/default/default_light.png')
+            with open(file_path, 'w') as configfile:
+                config.write(configfile)
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("重置完成[Path]")
+            msg_box.setText(f"背景已重置!{file_path}\n{filename}内imagepath已被重置为默认图片{defaultimage}\n操作成功!\n")
+            logger.info("Reset Background Succeed!")
+            msg_box.setIconPixmap(QIcon('./tsuki/assets/resources/done.png').pixmap(64, 64))  # 设置自定义图标
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
+            self.setBackgroundImageFromFile('./tsuki/assets/app/default/default_light.png')
 
+        else:
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("提示")
+            msg_box.setText("你还没设置背景图")
+            msg_box.setIconPixmap(QIcon('./tsuki/assets/resources/tips.png').pixmap(64, 64))  # 设置自定义图标
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
     # setting函数End==============================================================
 
     def performSave(self):
@@ -1581,6 +1811,7 @@ class TsukiReader(QMainWindow):
                 file.write(text)
                 QMessageBox.information(self, '保存成功', f'文件 "{fileName}" 保存成功')
                 self.statusBar().showMessage(f'TsukiSave❌: 文件 "{fileName}" 保存成功')
+                logger.info(f"[Log/INFO]Save File Success:{fileName}")
             return 0
         return -1
 
@@ -1595,12 +1826,14 @@ class TsukiReader(QMainWindow):
     def performClear(self):
         currentWidget = self.tabWidget.currentWidget()
         self.statusBar().showMessage('"Tsuki✔: 您执行了一次清空操作"')
+        logger.info(f"[Log/INFO]Clear File Success:{currentWidget.fileName()}")
         currentWidget.clear()
 
     def performUndo(self):
         currentWidget = self.tabWidget.currentWidget()
         currentWidget.undo()
         self.statusBar().showMessage('"Tsuki✔: 您执行了一次撤销操作"')
+        logger.info(f"[Log/INFO]Undo File Success:{currentWidget.fileName()}")
 
     def performRedo(self):
         currentWidget = self.tabWidget.currentWidget()
@@ -1637,11 +1870,7 @@ class TsukiReader(QMainWindow):
             self.handlePingResult(delays, ping_host1, ping_host2)
         except Exception as e:
             self.handlePingError(str(e))
-
-
-
     def runPing(self, ping_host):
-        # 检查主机是否为IPv6地址
         try:
             ipaddress.ip_address(ping_host)
             # 主机为IPv6
@@ -1686,6 +1915,7 @@ class TsukiReader(QMainWindow):
             self.statusBar().showMessage(link_info)
         else:
             self.handlePingError(f"Unable to ping {ping_host2}.")
+            logger.error(f"[Log/ERROR]PingServerManually")
 
     def handlePingError(self, error_message):
         ping_host1 = 'www.mooncn.link'
@@ -1697,7 +1927,7 @@ class TsukiReader(QMainWindow):
 
         QMessageBox.warning(self, 'PingServerManually | 失败原因报告',
                             f'我很抱歉您的检测失败了 \n 在此之前您需要知道的内容：\n | 检测时禁止使用VPN \n | 检测时可能会未响应，不必担心这是暂时的 \n 您的报错：{error_message} | Powered By MoonCN&TsukiNotes')
-
+        logger.error(f"[Log/ERROR]PingServerManually | 失败原因报告:{error_message}")
     def getColorStyle(self, delay):
         if delay > 150:
             return 'red'

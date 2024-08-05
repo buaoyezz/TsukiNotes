@@ -1,6 +1,6 @@
 # **TsukiNotes - Capture Your Thoughts Anytime, Anywhere**
 
-** Welcome [简体中文](readme_cn.md) | [English](readme.md) **
+** Welcome [简体中文](README_CN.md) | [English](README.md) **
 
 ## About TsukiNotes
 

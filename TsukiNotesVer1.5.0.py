@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 import sys
 import ctypes
+def hide_console_window():
+    if not debug_mode:
+        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+
 if __name__ == "__main__":
     debug_mode = "--debug" in sys.argv
     print(f"Command line arguments: {sys.argv}")  # 调试输出
     print(f"Debug mode: {debug_mode}")  # 调试输出
-    
-    if debug_mode:
-        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-    else:
-        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+
+    hide_console_window()
 import ipaddress
 import shutil
 import subprocess
@@ -22,6 +23,7 @@ import chardet
 import time
 import json
 import configparser
+import colorlog
 from datetime import datetime
 from socket import socket
 from turtle import color, pos
@@ -29,7 +31,7 @@ from packaging import version
 import ping3
 from PyQt5.QtGui import (
     QFont, QIcon, QTextCharFormat, QColor, QTextCursor, QKeySequence, QSyntaxHighlighter,
-    QPixmap, QPalette, QBrush
+    QPixmap, QPalette, QBrush, QPainter
 )
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QAction, QFileDialog, QFontDialog,
@@ -38,29 +40,32 @@ from PyQt5.QtWidgets import (
     QColorDialog, QDialog, QToolBar, QLineEdit, QDialogButtonBox, QGridLayout,
     QSpacerItem, QSizePolicy
 )
-from PyQt5.QtCore import QSettings, Qt, QEvent, QFile, QRegExp, QTimer
+from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout, QDialog, QPushButton, QLabel
+# target_path = './tsuki/assets/kernel/cython_utils.cp312-win_amd64.pyd'
+# sys.path.append(os.path.join('./tsuki/assets/kernel/cython_utils.cp312-win_amd64.pyd'))
+import ctypes
+current_dir = os.path.dirname(__file__)
+sys.path.append(os.path.join(current_dir, './tsuki/assets/kernel/'))
+import cython_utils
 
+LOG_COLORS = {
+    'DEBUG': 'purple',
+    'INFO': 'green',
+    'WARNING': 'yellow',
+    'ERROR': 'red',
+    'CRITICAL': 'red,bold'
+}
 
-# 定义颜色
-RESET = '\033[0m'
-WHITE = '\033[97m'
-YELLOW = '\033[93m'
-RED = '\033[91m'
-GREEN = '\033[32m'
-class ColoredFormatter(logging.Formatter):
+class ColoredFormatter(colorlog.ColoredFormatter):
     def format(self, record):
-        if record.levelno == logging.INFO:
-            color = GREEN
-        elif record.levelno == logging.WARNING:
-            color = YELLOW
-        elif record.levelno == logging.ERROR:
-            color = RED
-        else:
-            color = RESET
-
-        message = super().format(record)
-        return f'{color}{message}{RESET}'
+        color = LOG_COLORS.get(record.levelname, 'white')
+        formatter = colorlog.ColoredFormatter(
+            '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s%(reset)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+            log_colors=LOG_COLORS
+        )
+        return formatter.format(record)
 
 if os.path.exists('./tsuki/assets/log/'):
     tips_log_dir = './tsuki/assets/log/'
@@ -68,7 +73,7 @@ if os.path.exists('./tsuki/assets/log/'):
     def create_and_write_file(directory, filename, content):
         os.makedirs(directory, exist_ok=True)
         file_path = os.path.join(directory, filename)
-        # 写入
+
         with open(file_path, 'w') as file:
             file.write(content)
     directory = './tsuki/assets/log/'
@@ -77,20 +82,20 @@ if os.path.exists('./tsuki/assets/log/'):
 
     create_and_write_file(directory, filename, content)
 
-# 配置日志记录
 def setup_logging():
-    # 确保日志目录存在
     log_dir = './tsuki/assets/log/temp/'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    os.makedirs(log_dir, exist_ok=True)
 
-    # 创建处理器
-    stream_handler = logging.StreamHandler()  # 输出到控制台
+    stream_handler = logging.StreamHandler() 
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    file_handler = logging.FileHandler(os.path.join(log_dir, f'TsukiNotes_Log_{timestamp}.log'))  # 输出到文件
-    # 设置格式化器
-    formatter = ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler = logging.FileHandler(os.path.join(log_dir, f'TsukiNotes_Log_{timestamp}.log'))
+    
+    formatter = ColoredFormatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        log_colors=LOG_COLORS
+    )
     stream_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
     logger = logging.getLogger()
@@ -98,14 +103,14 @@ def setup_logging():
     logger.addHandler(stream_handler)
     logger.addHandler(file_handler)
 
-
 setup_logging()
-
 logger = logging.getLogger(__name__)
+
+
 # debug mod
-debug_version = '1.0.1FullVersion'
+debug_version = '1.1.0Release'
 logger.info("[LOG]Welcome Use TsukiNotes")
-logger.info("[LOG]You are using version 1.4.9")
+logger.info("[LOG]You are using version 1.5.0")
 logger.info("[INFO]Running DEBUG MOD NOW!")
 logger.info("Please wait for the program to start")
 logger.info("====================================================================================================================")
@@ -175,11 +180,66 @@ def delete_old_logs(directory, time_threshold_days=3):
 log_directory = 'tsuki/assets/log/temp/'
 delete_old_logs(log_directory)
 # ==============================================================End Welcome===================================================================================================================
-class PythonHighlighter(QSyntaxHighlighter):
+class FileLoaderThread(QThread):
+    dataLoaded = pyqtSignal(list)
+
+    def __init__(self, fileName):
+        super().__init__()
+        self.fileName = fileName
+
+    def run(self):
+        chunks = cython_utils.read_file_in_chunks(self.fileName)
+        self.dataLoaded.emit(chunks)
+
+class SyntaxHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.keyword_patterns = []
+        self.comment_pattern = (None, None)
+        self.quotation_pattern = (None, None)
+        self.function_pattern = (None, None)
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            expression = QRegExp(pattern)
+            index = expression.indexIn(text)
+            while index >= 0:
+                length = expression.matchedLength()
+                self.setFormat(index, length, format)
+                index = expression.indexIn(text, index + length)
+
+        start_index = 0
+        if self.previousBlockState() != 1:
+            start_index = self.comment_pattern[0].indexIn(text)
+
+        while start_index >= 0:
+            end_index = self.comment_pattern[0].matchedLength()
+            self.setFormat(start_index, end_index, self.comment_pattern[1])
+            start_index = self.comment_pattern[0].indexIn(text, start_index + end_index)
+
+        if self.quotation_pattern[0] is not None:
+            expression = QRegExp(self.quotation_pattern[0])
+            index = expression.indexIn(text)
+            while index >= 0:
+                length = expression.matchedLength()
+                self.setFormat(index, length, self.quotation_pattern[1])
+                index = expression.indexIn(text, index + length)
+
+        if self.function_pattern[0] is not None:
+            expression = QRegExp(self.function_pattern[0])
+            index = expression.indexIn(text)
+            while index >= 0:
+                length = expression.matchedLength()
+                self.setFormat(index, length, self.function_pattern[1])
+                index = expression.indexIn(text, index + length)
+
+        self.setCurrentBlockState(1)
+
+class PythonHighlighter(SyntaxHighlighter):
     def __init__(self, light=True, parent=None):
         super().__init__(parent)
         self.l = light
-        # self.highlight_keywords = True
+        
         keyword_format = QTextCharFormat()
         if light:
             keyword_format.setForeground(QColor("#b8860b"))
@@ -191,46 +251,132 @@ class PythonHighlighter(QSyntaxHighlighter):
             "not", "or", "pass", "raise", "return", "try",
             "while", "with", "yield", "#", "//", "None", "pass",
             "/n", "/", "parent", "format", "set", "int", "self",
-            "set", "__init__", "main", "(", ")", "layout", "QDialog"
+            "set", "__init__", "main", "(", ")", "layout", "QDialog",
             "'''", "False", "True", "range","print","input"
         ]
         self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
                                  for keyword in keywords]
 
         quotation_format = QTextCharFormat()
-        if light: quotation_format.setForeground(QColor("#608B4E"))
+        if light:
+            quotation_format.setForeground(QColor("#608B4E"))
         self.quotation_pattern = (QRegExp("\".*\""), quotation_format)
 
         function_format = QTextCharFormat()
         function_format.setFontItalic(True)
-        if light: function_format.setForeground(QColor("#569CD6"))
+        if light:
+            function_format.setForeground(QColor("#569CD6"))
         self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
 
         self.comment_format = QTextCharFormat()
-        if light: self.comment_format.setForeground(QColor("#ff0000"))
+        if light:
+            self.comment_format.setForeground(QColor("#ff0000"))
         self.comment_pattern = (QRegExp(r"#.*"), self.comment_format)
 
-    def highlightBlock(self, text):
-        for pattern, format in self.keyword_patterns:
-            expression = QRegExp(pattern)
-            index = expression.indexIn(text)
-            while index >= 0:
-                length = expression.matchedLength()
-                self.setFormat(index, length, format)
-                index = expression.indexIn(text, index + length)
+class CppHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.l = light
+        
+        keyword_format = QTextCharFormat()
+        if light:
+            keyword_format.setForeground(QColor("#b8860b"))
+            keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "class", "const", "delete", "double", "dynamic_cast", "enum",
+            "explicit", "export", "false", "float", "for", "friend",
+            "goto", "if", "inline", "int", "long", "namespace", "new",
+            "operator", "private", "protected", "public", "return",
+            "short", "signed", "sizeof", "static", "struct", "switch",
+            "template", "this", "throw", "true", "try", "typedef",
+            "typeid", "unsigned", "using", "virtual", "void", "volatile",
+            "wchar_t", "#include", "#define", "#ifdef", "#ifndef",
+            "#endif", "#pragma"
+        ]
+        self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
+                                 for keyword in keywords]
 
-        self.setCurrentBlockState(0)
+        quotation_format = QTextCharFormat()
+        if light:
+            quotation_format.setForeground(QColor("#608B4E"))
+        self.quotation_pattern = (QRegExp("\".*\""), quotation_format)
 
-        start_index = 0
-        if self.previousBlockState() != 1:
-            start_index = self.comment_pattern[0].indexIn(text)
+        function_format = QTextCharFormat()
+        function_format.setFontItalic(True)
+        if light:
+            function_format.setForeground(QColor("#569CD6"))
+        self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
 
-        while start_index >= 0:
-            end_index = self.comment_pattern[0].matchedLength()
-            self.setFormat(start_index, end_index, self.comment_pattern[1])
-            start_index = self.comment_pattern[0].indexIn(text, start_index + end_index)
+        self.comment_format = QTextCharFormat()
+        if light:
+            self.comment_format.setForeground(QColor("#ff0000"))
+        self.comment_pattern = (QRegExp(r"//.*"), self.comment_format)
 
-        self.setCurrentBlockState(1)
+class JavaHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.l = light
+        
+        keyword_format = QTextCharFormat()
+        if light:
+            keyword_format.setForeground(QColor("#b8860b"))
+            keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "abstract", "assert", "boolean", "break", "byte", "case",
+            "catch", "char", "class", "const", "continue", "default",
+            "do", "double", "else", "enum", "extends", "final",
+            "finally", "float", "for", "goto", "if", "implements",
+            "import", "instanceof", "int", "interface", "long",
+            "native", "new", "null", "package", "private", "protected",
+            "public", "return", "short", "static", "strictfp",
+            "super", "switch", "synchronized", "this", "throw", "throws",
+            "transient", "try", "void", "volatile", "while"
+        ]
+        self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
+                                 for keyword in keywords]
+
+        quotation_format = QTextCharFormat()
+        if light:
+            quotation_format.setForeground(QColor("#608B4E"))
+        self.quotation_pattern = (QRegExp("\".*\""), quotation_format)
+
+        function_format = QTextCharFormat()
+        function_format.setFontItalic(True)
+        if light:
+            function_format.setForeground(QColor("#569CD6"))
+        self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
+
+        self.comment_format = QTextCharFormat()
+        if light:
+            self.comment_format.setForeground(QColor("#ff0000"))
+        self.comment_pattern = (QRegExp(r"//.*"), self.comment_format)
+
+class MarkdownHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.l = light
+        
+        keyword_format = QTextCharFormat()
+        if light:
+            keyword_format.setForeground(QColor("#b8860b"))
+            keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "#", "##", "###", "####", "#####", "######", "*", "_", ">", "-",
+            "1.", "2.", "3.", "4.", "5.", "6.", "```", "[", "]", "(", ")"
+        ]
+        self.keyword_patterns = [(QRegExp(re.escape(keyword)), keyword_format)
+                                 for keyword in keywords]
+
+        quotation_format = QTextCharFormat()
+        if light:
+            quotation_format.setForeground(QColor("#608B4E"))
+        self.quotation_pattern = (QRegExp("`.*`"), quotation_format)
+
+        self.comment_format = QTextCharFormat()
+        if light:
+            self.comment_format.setForeground(QColor("#ff0000"))
+        self.comment_pattern = (QRegExp(r"<!--.*-->"), self.comment_format)
+# 高亮显示结束
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
@@ -263,10 +409,10 @@ class SettingsWindow(QDialog):
         grid_layout.addWidget(self.createButton("重新设置图标", self.parent().re_icon_setting), 2, 0)
         grid_layout.addWidget(self.createButton("自定义图标", self.parent().diy_icon_setting), 2, 1)
         grid_layout.addWidget(self.createButton("检查图标路径", self.parent().iconpath_check_a1), 3, 0)
-        grid_layout.addWidget(self.createButton("统计/关于显示设置", self.parent().total_setting), 3, 1)
+        grid_layout.addWidget(self.createButton("高亮显示设置", self.parent().total_setting), 3, 1)
         grid_layout.addWidget(self.createButton("设置背景图", self.parent().setBackgroundImage), 4, 0)
         grid_layout.addWidget(self.createButton("重置背景图",self.parent().reset_background), 4,1)
-        grid_layout.addWidget(self.createButton("用户背景图[app/default/user_file][测试]", self.parent().select_and_set_background), 5, 0)
+        # grid_layout.addWidget(self.createButton("用户背景图[app/default/user_file][测试]", self.parent().select_and_set_background), 5, 0)
     
         layout.addLayout(grid_layout)
 
@@ -312,7 +458,8 @@ class SearchResultDialog(QDialog):
     def __init__(self, results, parent=None):
         super(SearchResultDialog, self).__init__(parent)
         self.setWindowTitle('搜索成功！')
-        print("[Log/INFO]Search Succeed")
+        logging.info("[Log/INFO]Search Succeed")
+        self.setWindowIcon(QIcon("./tsuki/assets/GUI/resources/search.png"))
         self.results_label = QLabel()
         self.results = results
         self.current_index = 0
@@ -370,17 +517,20 @@ class TsukiReader(QMainWindow):
 
     def __init__(self):
         self.before = ''
-        self.current_version = '1.4.9'  # 全局版本号
-        self.real_version = '1.4.9'
-        self.update_Date = '2024/08/05'
-        self.version_td = 'FullVersion'
-        self.version_gj = 'b-v149FV240805'
-        print(f"====================================================================================================================\n"
-              f"[Log/INFO]TsukiReader is running ,relatedInformation:"
-              f"[Back]Version:{self.current_version}\n"
-              f"[Back]UpdateDate:{self.update_Date}\n"
-              f"[Back]Version Update The Channel:{self.version_td}\n"
-              f"[Back]versionTHE INTERNAL BUILD NUMBER:{self.version_gj}")
+        self.current_version = '1.5.0' 
+        self.real_version = '1.5.0Release'
+        self.update_Date = '2024/08/22'
+        self.version_td = 'Release'
+        self.version_gj = 'b-v150R-240822'
+        self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
+
+
+        logging.debug(f"====================================================================================================================\n"
+                      f"[Log/INFO]TsukiReader is running ,relatedInformation:"
+                      f"[Back]Version:{self.current_version}\n"
+                      f"[Back]UpdateDate:{self.update_Date}\n"
+                      f"[Back]Version Update The Channel:{self.version_td}\n"
+                      f"[Back]versionTHE INTERNAL BUILD NUMBER:{self.version_gj}")
 
         super().__init__()
         self.text_modified = False
@@ -400,6 +550,8 @@ class TsukiReader(QMainWindow):
         self.defaultFont = QFont("Microsoft YaHei")
         self.setGeometry(100, 100, 990, 600)
         self.setWindowTitle('TsukiNotes')
+        self.setWindowIcon(QIcon('./tsuki/assets/GUI/ico/logo.ico'))
+        logging.debug("initUI initialization is complete")
 
         self.text_edit = QPlainTextEdit()
         self.show()
@@ -437,11 +589,6 @@ class TsukiReader(QMainWindow):
         else:
             self.newFile()
 
-        icon_path = "./tsuki/assets/GUI/ico/logo.ico"
-        icon2_path = "./tsuki/assets/GUI/ico/old_logo.ico"
-        icon = QIcon(icon_path)
-        icon2 = QIcon(icon2_path)  # 原始logo
-        self.setWindowIcon(icon)
         self.updateStatusLabel()
 
         currentWidget = self.tabWidget.currentWidget()
@@ -449,6 +596,68 @@ class TsukiReader(QMainWindow):
         currentWidget.customContextMenuRequested.connect(self.showContextMenu)
         self.context_menu = QMenu(self)
         self.loadBackgroundSettings()
+        self.checkFirstRun()
+
+    def checkFirstRun(self):
+        say_zz = ("Welcome! Your Are First Run!\nThanks For Your Use\nThis Text Is Program Auto Make!")
+        if not os.path.exists('./tsuki/assets/app/config/launch'):
+            os.makedirs('./tsuki/assets/app/config/launch/', exist_ok=True)
+            os.path.join('./tsuki/assets/app/config/launch/', 'launch_first.md')
+
+        if not os.path.exists(self.config_file):
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle('Welcome to TsukiNotes!')
+            msg_box.setText('TuskiNotes Welcome\n\n\n感谢使用TsukiNotes!\nTsukiNotes 可以帮助你更好的创建文本\n本产品是一个轻量文本编辑器\n基于GPLv3 -可以在Github查阅该项目\n')
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.setWindowFlags(Qt.FramelessWindowHint)
+            msg_box.setFont(QFont("Microsoft YaHei UI", 6))
+
+            msg_box.setStyleSheet("""
+                QMessageBox {
+                    background-image: url('./tsuki/assets/app/default/default_light.png');
+                    background-position: center;
+                    border: 1px solid ; 
+                    border-radius: 10px; 
+                    padding: 100px; 
+                }
+                QMessageBox QLabel {
+                    color: black;
+                    font-size: 12px; 
+                    font-family: "Microsoft YaHei UI";
+                    qproperty-alignment: AlignLeft; 
+                }
+                QMessageBox QPushButton {
+                    background-color: #0078d4;
+                    color: white; /* 按钮文本颜色 */
+                    border: none; /* 去掉边框 */
+                    border-radius: 10px; /* 增大圆角按钮 */
+                    padding: 12px 24px; /* 调整按钮内边距 */
+                    font-size: 12px; /* 增大字体大小 */
+                    min-width: 120px; /* 调整最小宽度 */
+                    margin: 10px; /* 增大按钮间距 */
+                    font-family: "Microsoft YaHei UI";
+                }
+                QMessageBox QPushButton:pressed {
+                    background-color: #005a9e; 
+                }
+                QMessageBox QPushButton:default {
+                    border: 2px solid #0078d4;
+                    background-color: lightblue;
+                }
+            """)
+
+            msg_box.exec_()
+
+            with open(self.config_file, 'w') as file:
+                file.write(say_zz)
+        else:
+            pass
+
+        return 
+
+    logging.info("NEXT")
+
 
     def showContextMenu(self, pos):
         self.context_menu = QMenu(self)
@@ -815,7 +1024,7 @@ class TsukiReader(QMainWindow):
         if fileName:
             try:
                 encoding = self.detectFileEncoding(fileName)
-                self.current_encoding = encoding  # 存储文件编码
+                self.current_encoding = encoding  
 
                 if not self.openFileInTab(fileName, encoding):
                     self.createNewTab(fileName, encoding)
@@ -826,6 +1035,7 @@ class TsukiReader(QMainWindow):
 
             except Exception as e:
                 self.handleError('Open File', fileName, e)
+
 
     def detectFileEncoding(self, fileName):
         with open(fileName, 'rb') as file:
@@ -842,18 +1052,51 @@ class TsukiReader(QMainWindow):
                 return True
         return False
 
+    def openHexFileInTab(self, fileName):
+        for index in range(self.tabWidget.count()):
+            if self.tabWidget.tabText(index) == os.path.basename(fileName):
+                text_edit = self.tabWidget.widget(index)
+                self._load_hex_content(fileName, text_edit)
+                self.tabWidget.setCurrentWidget(text_edit)
+                return True
+        return False
+
+
     def createNewTab(self, fileName, encoding):
         tab_name = os.path.basename(fileName)
         text_edit = QPlainTextEdit()
-        self.setFont(text_edit)  # 设置默认字体为微软雅黑
+        self.setFont(text_edit)
         self.tabWidget.addTab(text_edit, tab_name)
-        self._load_file_content(fileName, text_edit, encoding)
+
+        if fileName.endswith(('.bin', '.exe', '.dat')):
+            self._load_hex_content(fileName, text_edit)
+        else:
+            self._load_file_content(fileName, text_edit, encoding)
+
         self.tabWidget.setCurrentWidget(text_edit)
         text_edit.textChanged.connect(self.updateStatusLabel)
 
-        if fileName.endswith(('.py', '.cpp', '.java')):
+        # 使用元组来检查多个文件扩展名
+        if fileName.endswith(('.py', '.pyx', '.pyw', '.pyi')):
             self.highlighter = PythonHighlighter(self.highlight_keywords, text_edit.document())
+        elif fileName.endswith(('.cpp', '.h', '.hpp', '.c', '.cxx', '.cc', '.hh', '.hxx', '.ino')):
+            self.highlighter = CppHighlighter(self.highlight_keywords, text_edit.document())
+        elif fileName.endswith(('.java', '.class')):
+            self.highlighter = JavaHighlighter(self.highlight_keywords, text_edit.document())
+        elif fileName.endswith(('.md', '.markdown')):
+            self.highlighter = MarkdownHighlighter(self.highlight_keywords, text_edit.document())
+        else:
+            self.highlighter = None 
+            
+        if self.highlighter is not None:
+            self.highlighter.setDocument(text_edit.document())
 
+
+
+    def _load_hex_content(self, fileName, text_edit):
+        self.loader_thread = FileLoaderThread(fileName)
+        self.loader_thread.dataLoaded.connect(lambda chunks: text_edit.setPlainText('\n'.join(chunks)))
+        self.loader_thread.start()
     def setFont(self, text_edit):
         font = QFont()
         font.setFamily("Microsoft YaHei UI")
@@ -962,7 +1205,7 @@ class TsukiReader(QMainWindow):
 
 
     def checkForUpdates(self):
-        version_url = 'https://inkwhispers.us.kg/update/zwrite/version.txt'
+        version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/version.txt'
         version = self.current_version
         try:
             response = requests.get(version_url, timeout=60)
@@ -1005,12 +1248,12 @@ class TsukiReader(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, '检测更新|错误',
-                                 f'出错啦！ \nOccurred:\n{str(e)}\n 请关闭您的VPN或加白inkwhispers.us.kg\n 或者尝试手动更新吧')
+                                 f'出错啦！ \nOccurred:\n{str(e)}\n 您可以尝试使用加速器加速GitHub\n 或者尝试手动更新吧')
             logger.error(f"[Log/ERROR]Check For Updates Error: {e}")
             self.statusBar().showMessage(f'TsukiUpdate❌: 检测失败！')
 
     def url_msg(self):
-        version_url = 'https://inkwhispers.us.kg/tn/update.txt'
+        version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/update.txt'
         versiongj = self.version_gj
         versiontime = self.update_Date
         version = self.current_version
@@ -1048,15 +1291,15 @@ class TsukiReader(QMainWindow):
     def update2(self):
         msgBox = QMessageBox()
         version = self.current_version
-        msgBox.setWindowTitle(f"检测更新 | 您的版本Ver{version} | TsukiNotes&Inkwhispers")
+        msgBox.setWindowTitle(f"检测更新 | 您的版本Ver{version} | TsukiNotes")
         msgBox.setText(
-            f"Hey,您现在使用的是：\n[备用]更新方案\n[推荐🔰]自动检测\nVPN用户请将[www.inkwhispers.us.kg/inkwhispers.us.kg]加入您的白名单\nVersion:{version}\nTsukiNotes&Inkwhispers 2024")
+            f"Hey,您现在使用的是：\n[备用]更新方案\n[推荐🔰]自动检测\n若无法成功检测，建议打开魔法再次尝试\nVersion:{version}\nTsukiNotes 2024")
         self.statusBar().showMessage(f'TsukiUpdate[2]: 您已选择了手动更新 ')
         self.update2Act = QAction('Update', self)
         self.update2Act.triggered.connect(self.update2)
         yesButton = QPushButton("下载源1-OD")
         source2Button = QPushButton("下载源2-123")
-        websiteButton = QPushButton("官网-Inkwhispers")
+        websiteButton = QPushButton("官网-[无]")
         newversionButton = QPushButton("官网版本对照🔰")
         cancelButton = QPushButton("取消")
 
@@ -1077,11 +1320,11 @@ class TsukiReader(QMainWindow):
             webbrowser.open('https://www.123pan.com/s/ZhtbVv-gagV3.html')
             self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择123Pan下载源！已经为您跳转至浏览器')
         elif msgBox.clickedButton() == websiteButton:
-            webbrowser.open('https://inkwhispers.us.kg/')
-            self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择浏览Inkwhispers！已经为您跳转至浏览器')
+            webbrowser.open('https://rmcl.zzbuaoye.us.kg/')
+            self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择浏览zzbuaoye0已经为您跳转至浏览器')
             logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == newversionButton:
-            webbrowser.open('https://inkwhispers.us.kg/tn/update.txt')
+            webbrowser.open('https://rmcl.zzbuaoye.us.kg/TsukiNotes/update.txt')
             logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == cancelButton:
             self.statusBar().showMessage(f'TsukiUpdate[2]🚫: 您已取消操作')
@@ -1097,15 +1340,16 @@ class TsukiReader(QMainWindow):
     def aboutMessage(self):
         current_version = self.current_version
         versiongj = self.version_gj
-        about_text = "<h1> TsukiNotes </h1><p><strong>BY ZZBuAoYe 2024</p></strong><strong><p>Inkwhispers | " \
-                     f"{current_version} FullVersion</strong></p>"
+        version_td = self.version_td
+        about_text = "<h1> TsukiNotes </h1><p><strong>BY ZZBuAoYe 2024</p></strong><strong><p>ZZBuAoYe | " \
+                     f"{current_version} {version_td}</strong></p>"
         QMessageBox.about(self, f"About TsukiNotes | #{versiongj}", about_text)
         self.statusBar().showMessage(f'TsukiBack✔: 您打开了AboutMessage')
         logger.info(f"[Log/INFO]Open AboutMessage.def look New Version\n")
 
     def aboutDetails(self):
         versiongj = self.version_gj
-        about_text = f"[软件信息]\n | 软件出品:MoonZZ \n | 时间：{self.update_Date}\n | {self.version_td} \nInkwhispers&ZZBuAoYe 2024©Copyright\nInkwhispers.us.kg"
+        about_text = f"[软件信息]\n | 软件出品:MoonZZ \n | 时间：{self.update_Date}\n | {self.version_td} \nZZBuAoYe 2024©Copyright\n"
         QMessageBox.about(self, f"AboutSoftWare | #{self.version_gj}", about_text)
         self.statusBar().showMessage(f'TsukiINFO: [{versiongj}] | [{self.version_td}] | [{self.update_Date}] ')
         logger.info(f"[Log/INFO]Open AboutDetails.def\n")
@@ -1122,21 +1366,24 @@ class TsukiReader(QMainWindow):
             f"<p style='text-align: center;'>Version:{version} {version_td}[{update_time}]</p>"
             "</html>"
             f"======================================================================================<br>"
-            f" [质量]1.优化背景图<br>"
-            f" [优化]2.优化OpenFile<br>"
-            f" [修复]3.OpenFile打开文件后字体全部失效<br>"
-            f" [测试]4.Config修复,新增用户快捷切换背景图[测试][不保存cfg]<br>"
-            f" [优化]5.优化项目结构，使Assets更加规整<br>"
-            f" [优化]6.优化多个函数<br>"
-            f" [修复]7.修复已知bug<br>"
-            f" [修复]8.解决多处调用不协调<br>"
-            f" [删减]9.删除老的代码，废弃部分工程<br>"
-            f" [新增]10.修正背景图save函数无法保存cfg的问题<br>"
-            f" [新增]11.修改default背景图<br>"
-            f" [优化]12.设置页面全局Microsoft YaHei提升观感<br>"
-            f" [优化]13.日志删除算法<br>"
+            f" *[质量]1.优化OpenFile，支持打开16进制文件[.exe .dat .bin之类]<br>"
+            f" *[优化]2.重构Create New Tab的函数<br>"
+            f" *[修复]3.打开文件过大时软件卡死崩溃<br>"
+            f" *[测试]4.加入多代码高亮显示[Cpp + Python + Java + MarkDown]<br>"
+            f" *[优化]5.加入Cython提升打开16进制文件效率<br>"
+            f" *[优化]6.修改logging上色逻辑<br>"
+            f" *[修复]7.修改一切版本更新<br>"
+            f" *[修复]8.解决因为背景导致的显示异常<br>"
+            f" +[删减]9.删除大量废弃无用代码<br>"
+            f" +[新增]10.高亮优化<br>"
+            f" +[新增]11.修改多个高亮逻辑<br>"
+            f" +[优化]12.DEBUG的logging变成purple<br>"
+            f" +[改进]13.FULLVERSION全部替换为Release<br>"
+            f" *[新增]14.新增第一次运行弹出窗口<br>"
+            f" *[修复]15.软件图标异常<br>"
             f"======================================================================================<br>"
-            f"<p style='text-align: center;'> || FullVersion ||</p>"
+            f"<p style='text-align: center;'>[+代表细节优化|*代表重要改动]</p>"
+            f"<p style='text-align: center;'> || {version_td} ||</p>"
             f"<p style='text-align: center;'>[内部版本号:{versiontime}]</p>"
         )
         dialog = QDialog(self)
@@ -1163,8 +1410,8 @@ class TsukiReader(QMainWindow):
     def online_updateMessage(self):
         try:
             current_version = self.current_version
-            online_update = 'https://inkwhispers.us.kg/tn/update.txt'
-            now_version_url = 'https://www.inkwhispers.us.kg/tn/version.txt'
+            online_update = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/update.txt'
+            now_version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/version.txt'
 
             response = requests.get(online_update, timeout=60)
             response.raise_for_status()  # 检查响应是否成功
@@ -1176,11 +1423,11 @@ class TsukiReader(QMainWindow):
 
             if version.parse(current_version) < version.parse(now_version):
                 update_text += "\n== == == == == == Tips == == == == == ==\n 您的版本可能太低了，并不适用该更新内容 \n "
-                QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} FullVersion", update_text)
+                QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} Release", update_text)
                 logger.info(f"[Log/INFO]Parse version RESULT:" + f"{current_version} < {now_version}\n")
             elif version.parse(current_version) == version.parse(now_version):
                 update_text += f"\n== == == == == == 当前版本 == == == == == ==\n 您的版本可以适用该更新日志 \n"
-                QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} FullVersion", update_text)
+                QMessageBox.about(self, f"TsukiNotes更新日志 -Ver {current_version} Release", update_text)
                 self.statusBar().showMessage(f'TsukiBack✔: 您打开了更新日志，获取目标在线日志ing...')
                 logger.info(f"[Log/INFO]Open UpdateMsg Succeed,RESULT:" + f"{current_version} = {now_version}")
             else:
@@ -1250,8 +1497,9 @@ class TsukiReader(QMainWindow):
         return 0
 
     def cutTab(self):
+        version_td = self.version_td
         version = self.current_version
-        cuttab = f"Ctrl + Z Undo \n Ctrl + Y Redo \n Ctrl + S Save \n Ctrl + F Search \n Ctrl + Shift + C Clear \n Ctrl + X Cut \n Ctrl + O Open \n Ctrl + T New Tab \n Ctrl + W Close Tab \n Inkwhispers Version:{version}FullVersion  "
+        cuttab = f"Ctrl + Z Undo \n Ctrl + Y Redo \n Ctrl + S Save \n Ctrl + F Search \n Ctrl + Shift + C Clear \n Ctrl + X Cut \n Ctrl + O Open \n Ctrl + T New Tab \n Ctrl + W Close Tab \n Version:{version}{version_td}  "
         QMessageBox.information(self, "TsukiNotes Shortcut Key🔰", cuttab)
 
     def textChanged(self):
@@ -1355,7 +1603,7 @@ class TsukiReader(QMainWindow):
                 self.statusBar().showMessage(f'TsukiBC✔: 成功加载背景图片 {image_path}！')
                 logger.info(f"[Log/INFO] Background Image Loaded: {image_path}")
             else:
-                self.statusBar().showMessage(f'TsukiBC❓: 未找到保存的背景图片设置或图片不存在。')
+                self.statusBar().showMessage(f'Welcome')
                 logger.warning(f"[Log/WARNING] Background Image Not Found or Not Set.")
 
         except Exception as e:
@@ -1526,12 +1774,11 @@ class TsukiReader(QMainWindow):
                 return False
         status_bar = self.statusBar()
         icon_path = "tsuki/assets/ico/logo.ico"
-        download_url = "https://download.inkwhispers.us.kg/tn/download/logo.ico"
-        alt_download_url = "https://www.mooncn.link/update/tsuki/logo.ico"
+        download_url = "https://rmcl.zzbuaoye.us.kg/TsukiNotes/logo.ico"
         manual_download_url = "https://www.123pan.com/s/ZhtbVv-plgV3.html"
         if ctypes.windll.shell32.IsUserAnAdmin():
             # 如果用户是管理员
-            if download_and_set_icon(download_url, icon_path) or download_and_set_icon(alt_download_url, icon_path):
+            if download_and_set_icon(download_url, icon_path):
                 status_bar.showMessage('ICON Setting Succeeded')
                 QMessageBox.information(self, 'LOADING', 'New Icon Set......')
                 logger.info("[Log/INFO]Icon Setting Succeeded")
@@ -1872,12 +2119,11 @@ class TsukiReader(QMainWindow):
 
     def pingServerManually(self):
         try:
-            ping_host1 = 'www.mooncn.link'
-            ping_host2 = 'inkwhispers.us.kg'
+            ping_host1 = 'rmcl.zzbuaoye.us.kg'
 
-            delays = self.runPingCommand(ping_host1, ping_host2)
+            delays = self.runPingCommand(ping_host1)
 
-            self.handlePingResult(delays, ping_host1, ping_host2)
+            self.handlePingResult(delays, ping_host1)
         except Exception as e:
             self.handlePingError(str(e))
     def runPing(self, ping_host):
@@ -1899,39 +2145,25 @@ class TsukiReader(QMainWindow):
             return None
 
 
-    def runPingCommand(self, ping_host1, ping_host2):
+    def runPingCommand(self, ping_host1):
         result1 = self.runPing(ping_host1)
-        result2 = self.runPing(ping_host2)
+        return result1
 
-        return result1, result2
-
-    def handlePingResult(self, delays, ping_host1, ping_host2):
-        top_delay, link_delay = delays  # 获取每个主机的延迟
-
+    def handlePingResult(self, delay, ping_host1):
         currentWidget = self.tabWidget.currentWidget()
 
-        if top_delay is not None:
-            top_info = f'TsukiPingBack - {ping_host1}: {top_delay} ms'
-            color_style_top = self.getColorStyle(top_delay)
-            currentWidget.setStyleSheet(f"font-color: {color_style_top}")
-            self.statusBar().showMessage(top_info)
+        if delay is not None:
+            info = f'TsukiPingBack - {ping_host1}: {delay} ms'
+            color_style = self.getColorStyle(delay)
+            currentWidget.setStyleSheet(f"color: {color_style}")
+            self.statusBar().showMessage(info)
         else:
-            self.handlePingError(f"Unable to ping {ping_host1}.")
-
-        if link_delay is not None:
-            link_info = f'TsukiPingBack - {ping_host1}: {top_delay}ms| {ping_host2}: {link_delay} ms'
-            color_style_link = self.getColorStyle(link_delay)
-            # currentWidget.setheet(f"font-color: {color_style_link}") # 封印
-            self.statusBar().showMessage(link_info)
-        else:
-            self.handlePingError(f"Unable to ping {ping_host2}.")
-            logger.error(f"[Log/ERROR]PingServerManually")
+            self.handlePingError(f"无法 ping 到 {ping_host1}。")
 
     def handlePingError(self, error_message):
-        ping_host1 = 'www.mooncn.link'
-        ping_host2 = 'inkwhispers.us.kg'
+        ping_host1 = 'rmcl.zzbuaoye.us.kg'
 
-        server_names = [f'Tsuki Back：{ping_host1}', f'Tsuki Back：{ping_host2}']
+        server_names = [f'Tsuki Back：{ping_host1}']
         for server_name in server_names:
             self.statusBar().showMessage(f'TsukiCheck❓: {server_name} 服务器很可能不在线！Tips：如有请关闭VPN')
 

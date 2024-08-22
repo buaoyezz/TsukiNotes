@@ -1,8 +1,0 @@
-Hello and welcome to TsukiNotes [Full Version]
-======================================================
-Thank you for experiencing the official version of Tsuki V1.4.3 FullVersion
-Please pay attention to the following:
-1. The source code is in the source folder, so I am open source
-2. My official website is [mooncn.link]
-3. Thank you for your support, software produced by: mooncn and zzbuaoye
-======================================================

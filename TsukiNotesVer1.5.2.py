@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 import sys
 import ctypes
+import markdown2
+import markdown
+import traceback
+from markdown2 import markdown as md_to_html
+import html2text
+from html2text import html2text 
 import ipaddress
 import shutil
 import subprocess
@@ -30,7 +36,7 @@ from PyQt5.QtWidgets import (
     QColorDialog, QDialog, QToolBar, QLineEdit, QDialogButtonBox, QGridLayout,
     QSpacerItem, QSizePolicy, QComboBox
 )
-from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal
+from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal,QPoint
 from PyQt5.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout, QDialog, QPushButton, QLabel
 # target_path = './tsuki/assets/kernel/cython_utils.cp312-win_amd64.pyd'
 # sys.path.append(os.path.join('./tsuki/assets/kernel/cython_utils.cp312-win_amd64.pyd'))
@@ -133,7 +139,8 @@ class QTextEditHandler(logging.Handler):
 class DebugWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TsukiNotes -Debug")
+        debug_version = '0.1.1'
+        self.setWindowTitle(f"TsukiNotes -Debug Ver{debug_version}")
         self.setGeometry(100, 100, 800, 600)
         self.setFont(QFont("Microsoft YaHei", 9))
         self.setWindowIcon(QIcon("./tsuki/assets/GUI/ico/logo.ico"))
@@ -242,6 +249,84 @@ def delete_old_logs(directory, time_threshold_days=3):
 
 log_directory = 'tsuki/assets/log/temp/'
 delete_old_logs(log_directory)
+
+class CustomTextEdit(QTextEdit):
+    def __init__(self, file_path, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.create_context_menu)
+        self.setFont(QFont("Microsoft YaHei"))  # Set the font to Microsoft YaHei
+
+        # Load content from file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            markdown_text = f.read()
+            self.setHtml(md_to_html(markdown_text))
+
+    def create_context_menu(self, position):
+        menu = QMenu(self)
+        
+        bold_action = QAction("Bold", self)
+        bold_action.triggered.connect(self.set_bold)
+        menu.addAction(bold_action)
+        
+        italic_action = QAction("Italic", self)
+        italic_action.triggered.connect(self.set_italic)
+        menu.addAction(italic_action)
+        
+        underline_action = QAction("Underline", self)
+        underline_action.triggered.connect(self.set_underline)
+        menu.addAction(underline_action)
+        
+        menu.exec_(self.mapToGlobal(position))
+
+    def set_bold(self):
+        cursor = self.textCursor()
+        cursor.select(QTextCursor.WordUnderCursor)
+        format = cursor.charFormat()
+        format.setFontWeight(QFont.Bold if format.fontWeight() != QFont.Bold else QFont.Normal)
+        cursor.setCharFormat(format)
+        self.setTextCursor(cursor)
+
+    def set_italic(self):
+        cursor = self.textCursor()
+        cursor.select(QTextCursor.WordUnderCursor)
+        format = cursor.charFormat()
+        format.setFontItalic(not format.fontItalic())
+        cursor.setCharFormat(format)
+        self.setTextCursor(cursor)
+
+    def set_underline(self):
+        cursor = self.textCursor()
+        cursor.select(QTextCursor.WordUnderCursor)
+        format = cursor.charFormat()
+        format.setFontUnderline(not format.fontUnderline())
+        cursor.setCharFormat(format)
+        self.setTextCursor(cursor)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            cursor = self.cursorForPosition(event.pos())
+            cursor.select(cursor.WordUnderCursor)
+            cursor_position = cursor.selectedText()
+
+            if cursor_position.startswith("http"):
+                webbrowser.open(cursor_position)
+            else:
+                super().mouseReleaseEvent(event)
+        else:
+            super().mouseReleaseEvent(event)
+
+    def save_to_file(self):
+        import html2text 
+        try:
+            html_text = self.toHtml()
+            markdown_text = html2text.html2text(html_text) 
+            
+            with open(self.file_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_text)
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f'Failed to save file: {e}')
 # ==============================================================End Welcome===================================================================================================================
 class FileLoaderThread(QThread):
     dataLoaded = pyqtSignal(list)
@@ -440,104 +525,257 @@ class MarkdownHighlighter(SyntaxHighlighter):
             self.comment_format.setForeground(QColor("#ff0000"))
         self.comment_pattern = (QRegExp(r"<!--.*-->"), self.comment_format)
 # 高亮显示结束
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QStackedWidget, QPushButton, QLabel, QGridLayout, QWidget
+
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QStackedWidget, QPushButton, QLabel, QGridLayout, QWidget
+from PyQt5.QtCore import Qt
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
         super(SettingsWindow, self).__init__(parent)
-        self.setWindowTitle('Tsuki全局设置[Settings]')  # 更改窗口标题为设置界面
-        self.setGeometry(100, 100, 600, 200)  # 设置窗口初始大小
+        self.setWindowTitle('Tsuki全局设置[Settings]')
+        self.setWindowIcon(QIcon('./Tsuki/assets/GUI/resources/settings.png'))
+
+        # 应用样式
+        # self.setStyleSheet("background-image: url('./tsuki/assets/app/default/default_light.png');")
+        self.setGeometry(100, 100, 800, 400)
         logger.info('Open Setting')
-        layout = QVBoxLayout(self)
 
-        # 添加右上角的“设置”标签
-        label = QLabel("|设置", self)
-        label.setStyleSheet("""
-            QLabel {
-                font-size: 20px; 
-                font-weight: bold;
-                margin-top: 0px;
-                margin-right: 10px;
-                alignment: AlignLeft;
-                font-family: "Microsoft YaHei UI" /* 我最爱的微软雅黑 */
-            }
-        """)
-        layout.addWidget(label, alignment=Qt.AlignLeft | Qt.AlignTop)
+        # 设置布局
+        main_layout = QHBoxLayout(self)
 
-        grid_layout = QGridLayout()
+        sidebar = QListWidget(self)
+        sidebar.setFixedWidth(150)
+        sidebar.addItem("界面设置")
+        sidebar.addItem("字体设置")
+        sidebar.addItem("图标设置")
+        sidebar.addItem("调试设置")
+        sidebar.addItem("关于设置")
+        sidebar.currentRowChanged.connect(self.display)
 
-        grid_layout.addWidget(self.createButton("设置背景颜色", self.parent().set_background), 0, 0)
-        grid_layout.addWidget(self.createButton("重置文本框背景图片", self.parent().reset_background_color), 0, 1)
-        grid_layout.addWidget(self.createButton("设置字体大小", self.parent().set_font_size), 1, 0)
-        grid_layout.addWidget(self.createButton("初始化字体大小", self.parent().initialize_font_size), 1, 1)
-        grid_layout.addWidget(self.createButton("重新设置图标", self.parent().re_icon_setting), 2, 0)
-        grid_layout.addWidget(self.createButton("自定义图标", self.parent().diy_icon_setting), 2, 1)
-        grid_layout.addWidget(self.createButton("检查图标路径", self.parent().iconpath_check_a1), 3, 0)
-        grid_layout.addWidget(self.createButton("高亮显示设置", self.parent().total_setting), 3, 1)
-        grid_layout.addWidget(self.createButton("设置背景图", self.parent().setBackgroundImage), 4, 0)
-        grid_layout.addWidget(self.createButton("重置背景图",self.parent().reset_background), 4,1)
-        grid_layout.addWidget(self.createButton("调试模式", self.parent().toggle_debug_mode), 5, 0)
-        # grid_layout.addWidget(self.createButton("用户背景图[app/default/user_file][测试]", self.parent().select_and_set_background), 5, 0)
-    
-        layout.addLayout(grid_layout)
+        self.stack = QStackedWidget(self)
+        self.stack.addWidget(self.interfacePage())
+        self.stack.addWidget(self.fontPage())
+        self.stack.addWidget(self.iconPage())
+        self.stack.addWidget(self.debugPage())
+        self.stack.addWidget(self.aboutPage())
+
+        main_layout.addWidget(sidebar)
+        main_layout.addWidget(self.stack)
+
+        self.setLayout(main_layout)
 
         # 应用样式
         self.applyStyle()
+    def interfacePage(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        title_label = QLabel("| 界面设置", self)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px; 
+                font-weight: bold;
+                color: #333333;
+            }
+        """)
+        layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        # 创建按钮布局
+        button_layout = QGridLayout()
+        button_layout.setSpacing(15)
+
+        button_layout.addWidget(self.createButton("设置背景颜色", self.parent().set_background), 0, 0)
+        button_layout.addWidget(self.createButton("重置文本框背景图片", self.parent().reset_background_color), 0, 1)
+        button_layout.addWidget(self.createButton("设置背景图", self.parent().setBackgroundImage), 1, 0)
+        button_layout.addWidget(self.createButton("重置背景图", self.parent().reset_background), 1, 1)
+        button_layout.addWidget(self.createButton("高亮显示设置", self.parent().total_setting), 2, 0)
+        button_layout.addWidget(self.createButton("彩色设置背景", self.parent().color_bg), 2, 1)
+
+        layout.addLayout(button_layout)
+        return page
+
+    def fontPage(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        title_label = QLabel("| 字体设置", self)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px; 
+                font-weight: bold;
+                color: #333333;
+            }
+        """)
+        layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        button_layout = QGridLayout()
+        button_layout.setSpacing(15)
+
+        button_layout.addWidget(self.createButton("设置字体大小", self.parent().set_font_size), 0, 0)
+        button_layout.addWidget(self.createButton("初始化字体大小", self.parent().initialize_font_size), 0, 1)
+
+        layout.addLayout(button_layout)
+        return page
+
+    def iconPage(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        title_label = QLabel("| 图标设置", self)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px; 
+                font-weight: bold;
+                color: #333333;
+            }
+        """)
+        layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        button_layout = QGridLayout()
+        button_layout.setSpacing(15)
+
+        button_layout.addWidget(self.createButton("重新设置图标", self.parent().re_icon_setting), 0, 0)
+        button_layout.addWidget(self.createButton("自定义图标", self.parent().diy_icon_setting), 0, 1)
+        button_layout.addWidget(self.createButton("检查图标路径", self.parent().iconpath_check_a1), 1, 0)
+
+        layout.addLayout(button_layout)
+        return page
+
+    def debugPage(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        title_label = QLabel("| 调试设置", self)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px; 
+                font-weight: bold;
+                color: #333333;
+            }
+        """)
+        layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        button_layout = QGridLayout()
+        button_layout.setSpacing(15)
+
+        button_layout.addWidget(self.createButton("调试模式", self.parent().toggle_debug_mode), 0, 0)
+        button_layout.addWidget(self.createButton("加入TsukiNotes预览计划", self.parent().beta_version), 0, 1)
+
+        layout.addLayout(button_layout)
+        return page
+    
+    def aboutPage(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        # 减少布局的上下内边距和组件间距
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        title_label = QLabel("| 关于", self)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px; 
+                font-family: "Microsoft YaHei";
+                font-weight: bold;
+                color: #333333;
+            }
+        """)
+
+        font = QFont("Microsoft YaHei")
+        about_label = QLabel("""
+            TsukiNotes
+            TsukiNotes 是一个具备高亮文本的记事本软件
+            本软件具备多种特殊功能，支持背景图片、自定义字体、自定义图标等功能
+            对于编程爱好者，本软件虽无法替代专业软件，但是可以为您带来较为便捷的高亮功能
+            本软件目前已经支持Python,C++,Java,MarkDown四种语言高亮，为您带来不同的体验！
+            效率方案，我们有提供Cython解决方案！
+            """)
+        about_label.setFont(font)
+
+        layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+        layout.addWidget(about_label, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        layout.addStretch()
+        return page
 
     def createButton(self, text, slot):
         button = QPushButton(text)
         button.clicked.connect(slot)
         button.setStyleSheet("""
             QPushButton {
-                background-color: #666666;  /* gray按钮背景 */
+                background-color: #555555;  /* 按钮背景颜色 */
                 color: white;
-                border: 1px solid #005a9e;
+                border: 2px solid #005a9e;
                 padding: 10px;
-                border-radius: 5px;
+                border-radius: 10px;
                 font-size: 14px;
-                font-family: "Microsoft YaHei" 
+                font-family: "Microsoft YaHei";
             }
             QPushButton:hover {
-                background-color: #4a4a4a;  /* 按钮悬停的 */
+                background-color: #777777;
             }
             QPushButton:pressed {
-                background-color: #3c3c3c;  /* 按钮按下时候的 */
+                background-color: #444444; 
             }
         """)
         return button
 
+    def display(self, index):
+        self.stack.setCurrentIndex(index)
+
     def applyStyle(self):
-        # 设置窗口样式
         self.setStyleSheet("""
             QDialog {
-                background-color: #f0f0f0;  /* 浅灰色背景 */
+                background-color: #f0f0f0;
+            }
+            QListWidget {
+                background-color: #333333; 
+                color: white;
+                border: none;
+                outline: 0px;
+            }
+            QListWidget::item {
+                padding: 10px;
+                font-size: 14px;
+                font-family: "Microsoft YaHei";
+            }
+            QListWidget::item:selected {
+                background-color: #555555;  
+                border: none;
             }
             QLabel {
-                color: #333333;  /* 深灰色文字 */
+                color: #333333;  
                 font-size: 14px;
             }
         """)
+
+
+
+from PyQt5.QtGui import QTextCursor
 
 # 搜索的class
 class SearchResultDialog(QDialog):
     def __init__(self, results, parent=None):
         super(SearchResultDialog, self).__init__(parent)
-        self.setWindowTitle('搜索成功！')
-        logging.info("[Log/INFO]Search Succeed")
+        self.setWindowTitle('Search - Succeed')
+        logging.info("[Log/INFO] Search Succeed")
         self.setWindowIcon(QIcon("./tsuki/assets/GUI/resources/search.png"))
-        self.results_label = QLabel()
-        self.results = results
+        self.results = results or [] 
         self.current_index = 0
 
+        self.results_label = QTextBrowser()
+        self.results_label.setOpenExternalLinks(True)
+
         self.next_button = QPushButton('下一个')
-        self.next_button.clicked.connect(self.showNextResult)
-
         self.previous_button = QPushButton('上一个')
-        self.previous_button.clicked.connect(self.showPreviousResult)
-
         self.ok_button = QPushButton('确定')
-        self.ok_button.clicked.connect(self.accept)
-
         self.cancel_button = QPushButton('退出')
+
+        self.next_button.clicked.connect(self.showNextResult)
+        self.previous_button.clicked.connect(self.showPreviousResult)
+        self.ok_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -548,32 +786,50 @@ class SearchResultDialog(QDialog):
         layout.addWidget(self.cancel_button)
         self.setLayout(layout)
 
+        self.setStyleSheet("""
+            QPushButton {
+                font-size: 14px;
+                background-color: #f0f0f0;
+                border: 1px solid #cccccc;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QTextBrowser {
+                font-size: 16px;
+                padding: 10px;
+                border: 1px solid #dddddd;
+                border-radius: 5px;
+            }
+        """)
+
         self.showResult()
 
     def showResult(self):
         if self.results:
             result = self.results[self.current_index]
-            self.results_label.setText(result)
+            highlighted_result = f'<p style="background-color: purple; color: white; padding: 5px;">{result}</p>'
+            self.results_label.setHtml(highlighted_result)
+            
+            cursor = self.results_label.textCursor()
+            cursor.movePosition(QTextCursor.Start)  # Move cursor to the start
+            self.results_label.setTextCursor(cursor)
         else:
-            self.results_label.setText("Tips:未找到有关的结果")
-            logger.info(f"Can't Find Result[{result}]")
-            print(f"[Log/INFO]Can't Find Result[{result}]")
+            self.results_label.setText("Tips: 未找到有关的结果")
+            logging.info("Can't Find Result")
 
     def showNextResult(self):
         if self.results:
-            if self.current_index < len(self.results) - 1:
-                self.current_index += 1
-            else:
-                self.current_index = 0
+            self.current_index = (self.current_index + 1) % len(self.results)
             self.showResult()
 
     def showPreviousResult(self):
         if self.results:
-            if self.current_index > 0:
-                self.current_index -= 1
-            else:
-                self.current_index = len(self.results) - 1
+            self.current_index = (self.current_index - 1) % len(self.results)
             self.showResult()
+
 # ======================================================以下是TsukiReader的CLass=====================================================
 # ==================================================================================================================================
 
@@ -581,19 +837,20 @@ class TsukiReader(QMainWindow):
 
     def __init__(self):
         self.before = ''
-        self.current_version = '1.5.1' 
-        self.real_version = '1.5.1Release'
-        self.update_Date = '2024/08/23'
+        self.current_version = '1.5.2' 
+        self.real_version = '1.5.2Release'
+        self.update_Date = '2024/08/24'
         self.version_td = 'Release'
         self.version_gj = 'b-v151R-240823'
         self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
 
-        logging.debug(f"====================================================================================================================\n"
+        logging.debug(f"\n====================================================================================================================\n"
                       f"[Log/INFO]TsukiReader is running ,relatedInformation:"
                       f"[Back]Version:{self.current_version}\n"
                       f"[Back]UpdateDate:{self.update_Date}\n"
                       f"[Back]Version Update The Channel:{self.version_td}\n"
-                      f"[Back]versionTHE INTERNAL BUILD NUMBER:{self.version_gj}")
+                      f"[Back]versionTHE INTERNAL BUILD NUMBER:{self.version_gj}\n"
+                      f"====================================================================================================================")
 
         super().__init__()
         self.text_modified = False
@@ -602,6 +859,7 @@ class TsukiReader(QMainWindow):
         self.context_menu = None
         self.custom_lines = 0
         self.initUI()
+        self.tabWidget.currentChanged.connect(self.updateStatusLabel)
 
     def initUI(self):
         self.tabWidget = QTabWidget()
@@ -668,6 +926,15 @@ class TsukiReader(QMainWindow):
             self.debug_window.hide()
         else:
             self.debug_window.show()
+
+    def close_debug_window(self):
+        if self.debug_window:
+            self.debug_window.close()
+            logging.debug("Debug window closed")
+
+    def color_bg(self):
+        QMessageBox.information(self, "提示", "正在努力")
+        logging.info("TipsShowing Color_bg")
 
     def checkFirstRun(self):
         say_zz = ("Welcome! Your Are First Run!\nThanks For Your Use\nThis Text Is Program Auto Make!")
@@ -876,8 +1143,8 @@ class TsukiReader(QMainWindow):
         self.renameTabAct = QAction(QIcon('./tsuki/assets/GUI/resources/font_size_reset_tab.png'),'重命名标签', self)
         self.renameTabAct.triggered.connect(self.renameTab)
 
-        self.cutTabAct = QAction(QIcon('./tsuki/assets/GUI/resources/settings_list_shortcut.png'),'快捷键', self)
-        self.cutTabAct.triggered.connect(self.cutTab)
+        # self.cutTabAct = QAction(QIcon('./tsuki/assets/GUI/resources/settings_list_shortcut.png'),'快捷键', self)
+        # self.cutTabAct.triggered.connect(self.cutTab)
 
         self.pingServerManuallyAct = QAction(QIcon('./tsuki/assets/GUI/resources/server_ping.png'),'手动Ping服务器', self)
         self.pingServerManuallyAct.triggered.connect(self.pingServerManually)
@@ -896,46 +1163,73 @@ class TsukiReader(QMainWindow):
         self.settingsAction.setIcon(QIcon(settingicon))
         self.settingsAction.triggered.connect(self.openSettingsWindow)
         self.settingsAction.setIcon(QIcon(settingicon))
+
+        self.runcodeAction = QAction(self)
+        self.runcodeAction.setIcon(QIcon('./tsuki/assets/GUI/resources/run.png'))
+        self.runcodeAction.setShortcut('F5')
+        self.runcodeAction.triggered.connect(self.runcode)
+
+        self.runcode_debugAction = QAction(self)
+        self.runcode_debugAction.setIcon(QIcon('./tsuki/assets/GUI/resources/debug.png'))
+        self.runcode_debugAction.setShortcut('F6')
+        self.runcode_debugAction.triggered.connect(self.runcode_debug)
+
+
     def createMenus(self):
         menubar = self.menuBar()
 
+        # 文件菜单
         fileMenu = menubar.addMenu('文件')
         fileMenu.addAction(self.newAct)
         fileMenu.addAction(self.openAct)
         fileMenu.addAction(self.saveAct)
         fileMenu.addAction(self.closeAct)
         fileMenu.addAction(self.exitAct)
-
+        
+        # 编辑菜单
         editMenu = menubar.addMenu('编辑')
         editMenu.addAction(self.fontAct)
         editMenu.addAction(self.resetFontAct)
         editMenu.addAction(self.renameTabAct)
         editMenu.addAction(self.setfontsizeAct)
 
-        UpdateMenu = menubar.addMenu('更新')
-        UpdateMenu.addAction(self.checkUpdateAct)
-        UpdateMenu.addAction(self.update2Act)
-        UpdateMenu.addAction(self.versionnowAct)
-        UpdateMenu.addAction(self.online_updateMessageAct)
-        # UpdateMenu.addAction(self.updateAct)
+        # 更新菜单
+        updateMenu = menubar.addMenu('更新')
+        updateMenu.addAction(self.checkUpdateAct)
+        updateMenu.addAction(self.update2Act)
+        updateMenu.addAction(self.versionnowAct)
+        updateMenu.addAction(self.online_updateMessageAct)
 
-        toolbarMenu = menubar.addMenu('关于')
-        toolbarMenu.addAction(self.aboutAct)
-        toolbarMenu.addAction(self.aboutDetailsAct)
-        # toolbarMenu.addAction(self.updatetxtAct)
+        # 关于菜单
+        aboutMenu = menubar.addMenu('关于')
+        aboutMenu.addAction(self.aboutAct)
+        aboutMenu.addAction(self.aboutDetailsAct)
 
-        cutTabMenu = menubar.addMenu('快捷键')
-        cutTabMenu.addAction(self.cutTabAct)
+        # 服务器菜单
+        serverMenu = menubar.addMenu('服务器')
+        serverMenu.addAction(self.pingServerManuallyAct)
+        serverMenu.addAction(self.url_msgAct)
 
-        pingServerManuallyMenu = menubar.addMenu('服务器')
-        pingServerManuallyMenu.addAction(self.pingServerManuallyAct)
-        pingServerManuallyMenu.addAction(self.url_msgAct)
+        # 设置菜单
+        settingsMenu = menubar.addMenu(QIcon('./tsuki/assets/GUI/resources/settings.png'), '设置')
+        settingsMenu.addAction(self.settingsAction)
 
-        settings1Menu = menubar.addMenu(QIcon('./tsuki/assets/GUI/resources/settings.png'),'设置')
-        settings1Menu.addAction(self.settingsAction)
 
+        runCodeMenu = menubar.addMenu('运行')
+        runCodeMenu.setIcon(QIcon('./tsuki/assets/GUI/resources/start.png'))
+        
+        self.runcodeAction = QAction('Run Code', self)
+        self.runcodeAction.setIcon(QIcon('./tsuki/assets/GUI/resources/start.png'))
+        self.runcodeAction.setShortcut('F5')
+        self.runcodeAction.triggered.connect(self.runcode)
+        runCodeMenu.addAction(self.runcodeAction)
+        
+        self.runcode_debugAction = QAction('Debug Run Code', self)
+        self.runcode_debugAction.setIcon(QIcon('./tsuki/assets/GUI/resources/debug.png'))
+        self.runcode_debugAction.setShortcut('F6')
+        self.runcode_debugAction.triggered.connect(self.runcode_debug)
+        runCodeMenu.addAction(self.runcode_debugAction)
     def openSettingsWindow(self):
-        # 设置main调用
         settings_window = SettingsWindow(self)
         settings_window.exec_()
 
@@ -950,6 +1244,7 @@ class TsukiReader(QMainWindow):
         self.shortcut_open = QShortcut('Ctrl+O', self)
         self.shortcut_new = QShortcut('Ctrl+T', self)
         self.shortcut_close = QShortcut('Ctrl+W', self)
+        self.shortcut_run = QShortcut('F5', self)
 
         self.shortcut_search.activated.connect(self.performSearch)
         self.shortcut_save.activated.connect(self.performSave)
@@ -960,25 +1255,38 @@ class TsukiReader(QMainWindow):
         self.shortcut_open.activated.connect(lambda: (self.openFile("")))
         self.shortcut_new.activated.connect(self.newFile)
         self.shortcut_close.activated.connect(self.closeFile)
+        self.shortcut_run.activated.connect(self.runcode)
 
     def connectTextChangedSignal(self, index):
         currentWidget = self.tabWidget.currentWidget()
         currentWidget.textChanged.connect(self.updateStatusLabel)
 
 
-    # 新增一个方法用于更新标签的内容
     def updateStatusLabel(self):
         currentWidget = self.tabWidget.currentWidget()
-        if currentWidget is not None:
+        if currentWidget:
             cursor = currentWidget.textCursor()
-            line_number = cursor.blockNumber() + 1
-            column_number = cursor.columnNumber() + 1
+            cursor_line = cursor.blockNumber() + 1
+            cursor_column = cursor.columnNumber() + 1
             char_count = len(currentWidget.toPlainText())
-            # 获取当前文件的编码
             encoding = getattr(self, 'current_encoding', 'Unknown-Encoding')
-
-            status_text = f'[总] [ 行数: {line_number} | 列数: {column_number} | 字符数: {char_count} | 编码: {encoding} ]'
+            document = currentWidget.document()
+            block = document.begin()
+            line_count = 0
+            max_column_count = 0
+            
+            while block.isValid():
+                line_text = block.text()
+                line_count += 1
+                max_column_count = max(max_column_count, len(line_text))
+                block = block.next()
+            
+            status_text = (f'[当前文本] [ 行数: {line_count} | 列数: {max_column_count} | 字符数: {char_count} | '
+                        f'编码: {encoding} | 光标位置: 行{cursor_line} 列{cursor_column} ]')
+            # logging.debug(f"[Log/INFO]Update Status Label: {status_text},all done") # 测试用的，正常人不玩这个
             self.status_label.setText(status_text)
+
+
 
     def textChanged(self):
         self.text_modified = True
@@ -1189,6 +1497,50 @@ class TsukiReader(QMainWindow):
         self.loader_thread = FileLoaderThread(fileName)
         self.loader_thread.dataLoaded.connect(lambda chunks: text_edit.setPlainText('\n'.join(chunks)))
         self.loader_thread.start()
+
+    def beta_version(self):
+        msgBox = QMessageBox()
+        version = self.current_version
+        msgBox.setWindowTitle(f"您确定要加入测试版通道吗？")
+        msgBox.setText(
+            f"测试版\n若加入测试版，您将优先享受最新的功能，但是他可能存在bug！\n你确定要加入测试版吗？")
+
+        yesButton = QPushButton("确定加入测试版通道")
+        source2Button = QPushButton("了解测试版")
+        cancelButton = QPushButton("取消")
+
+        msgBox.addButton(yesButton, QMessageBox.YesRole)
+        msgBox.addButton(source2Button, QMessageBox.YesRole)
+        msgBox.addButton(cancelButton, QMessageBox.NoRole)
+
+        clickedButton = msgBox.exec()
+
+        if msgBox.clickedButton() == yesButton:
+            self.update_config(True)  
+            QMessageBox.information(self, "提示", "您已加入测试版通道!感谢加入!\n请注意,测试版可能会存在bug,并且随时可能会被删除")
+            logging.debug(f"[Log/INFO]User joined the test channel!")
+        elif msgBox.clickedButton() == source2Button:
+            QMessageBox.information(self, "提示", "测试版通道是实验性的\n一切bug都可能发生\n并且一旦加入，当前版本还不支持退出")
+            logging.info(f"[Log/INFO]User looked about -> Beta version")
+        elif msgBox.clickedButton() == cancelButton:
+            self.update_config(False)
+            QMessageBox.information(self, "提示", "您已取消加入测试版通道!\n若需要随时可以加入")
+            logging.info(f"[Log/INFO]User canceled the operation")
+
+    def update_config(self, is_beta):
+        config = configparser.ConfigParser()
+        config_file_path = './tsuki/assets/app/cfg/update/update.cfg'
+        
+        os.makedirs(os.path.dirname(config_file_path), exist_ok=True)
+
+        config['BetaVersion'] = {'BetaVersion': 'Activity' if is_beta else 'off'}
+        config['Download'] = {'Download Link': 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/beta/version.txt' if is_beta else 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/version.txt'}
+
+        with open(config_file_path, 'w') as configfile:
+            config.write(configfile)
+        
+        logging.info(f"[Log/INFO]Config updated: BetaVersion = {'Activity' if is_beta else 'off'}")
+
     def setFont(self, text_edit):
         font = QFont()
         font.setFamily("Microsoft YaHei UI")
@@ -1212,36 +1564,120 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             self.handleError('Load File Content', fileName, e)
 
-    def newFile(self, filePath='./tsuki/assets/resources/'):
-        textEdit = QPlainTextEdit()
-        
-        # 设置字体为“Microsoft YaHei UI”
-        font = QFont("Microsoft YaHei UI")
-        textEdit.setFont(font)
-        
-        # 默认图标路径
-        iconPath = './tsuki/assets/GUI/resources/text_file.png'
+    def runcode(self):
+        current_index = self.tabWidget.currentIndex()
+        current_widget = self.tabWidget.widget(current_index)
+        tab_name = self.tabWidget.tabText(current_index)
+        font = QFont("Microsoft YaHei")
 
-        if filePath:
-            fileExt = os.path.splitext(filePath)[1].lower()
-            if fileExt == '.exe':
-                iconPath = './tsuki/assets/GUI/resources/tips.png'
-            elif fileExt == '.py':
-                iconPath = './tsuki/assets/GUI/resources/python.png'
-            elif fileExt == '.cpp':
-                iconPath = './tsuki/assets/GUI/resources/cpp.png'
-            elif fileExt == '.java':
-                iconPath = './tsuki/assets/GUI/resources/java.png'
+        if tab_name.endswith('.md') or tab_name.endswith('.markdown'):
+            # 自动保存逻辑
+            if hasattr(current_widget, 'file_path') and current_widget.file_path:
+                file_path = current_widget.file_path
+            else:
+                # 如果文件不存在，保存在当前路径
+                file_path = os.path.join(os.getcwd(), tab_name)
+            
+            try:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(current_widget.toPlainText())
+                print(f"File saved: {file_path}")
+            except Exception as e:
+                QMessageBox.warning(self, 'Save Error', f'无法保存文件：{str(e)}')
+                return
+
+            if hasattr(current_widget, 'setFont'):
+                current_widget.setFont(font)
+            
+            self.runcodeAction.setIcon(QIcon('./tsuki/assets/GUI/resources/stop.png'))
+            markdown_text = current_widget.toPlainText()
+            html_text = markdown2.markdown(markdown_text)
+            
+            preview_window = QDialog(self)
+            preview_window.setWindowTitle(f'Preview - {tab_name}')
         
-        print(f"Icon path: {iconPath}")
-        if not os.path.isfile(iconPath):
-            print(f"Icon file does not exist: {iconPath}")
-        self.tabWidget.addTab(textEdit, QIcon(iconPath), "未命名文档")
+            preview_text_edit = CustomTextEdit(file_path=file_path, parent=preview_window)
+            preview_text_edit.setHtml(html_text)
+            preview_text_edit.setAcceptRichText(True) 
+            
+            toggle_mode_button = QPushButton('Toggle Dark/Light Mode', preview_window)
+            toggle_mode_button.clicked.connect(lambda: self.toggle_mode(preview_text_edit))
+            
+            save_button = QPushButton('Save Changes', preview_window)
+            save_button.clicked.connect(preview_text_edit.save_to_file)
+            preview_window.resize(800, 600) 
         
-        textEdit.setLineWrapMode(QPlainTextEdit.NoWrap)
+            preview_layout = QVBoxLayout(preview_window)
+            preview_layout.addWidget(preview_text_edit)
+            preview_layout.addWidget(toggle_mode_button)
+            preview_layout.addWidget(save_button)
+            preview_window.setLayout(preview_layout)
+            
+            preview_window.exec_()
+            
+            self.runcodeAction.setIcon(QIcon('./tsuki/assets/GUI/resources/start.png'))
+        else:
+            QMessageBox.warning(self, 'Warning', '请运行[.md][.markdown]后缀的文件\n暂不支持预览其他格式文件\n')
+
+    def toggle_mode(self, text_edit):
+        current_stylesheet = text_edit.styleSheet()
+        if "background-color: black" in current_stylesheet:
+            text_edit.setStyleSheet("background-color: white; color: black;")
+        else:
+            text_edit.setStyleSheet("background-color: black; color: white;")
+
+    def runcode_debug(self):
+        self.toggle_debug_mode()
         
-        textEdit.textChanged.connect(self.updateStatusLabel)
-        logger.info("[Log/INFO] New File")
+        try:
+            self.runcode()
+            logging.debug("runcode function has been executed with debugging mode.")
+        
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+            logging.error("".join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            
+            self.close_debug_window()
+    
+        finally:
+            self.close_debug_window()
+
+    def newFile(self, filePath='./tsuki/assets/resources/'):
+            textEdit = QPlainTextEdit()
+            
+            font = QFont("Microsoft YaHei UI")
+            textEdit.setFont(font)
+            iconPath = './tsuki/assets/GUI/resources/text_file.png'
+            print(f"Received filePath: {filePath}")
+
+            if filePath:
+                if os.path.isfile(filePath):
+                    fileExt = os.path.splitext(filePath)[1].lower()
+                    print(f"File extension: {fileExt}")
+                    if fileExt == '.exe':
+                        iconPath = './tsuki/assets/GUI/resources/tips.png'
+                    elif fileExt == '.py':
+                        iconPath = './tsuki/assets/GUI/resources/python.png'
+                    elif fileExt == '.cpp':
+                        iconPath = './tsuki/assets/GUI/resources/cpp.png'
+                    elif fileExt == '.java':
+                        iconPath = './tsuki/assets/GUI/resources/java.png'
+                    else:
+                        print(f"Unrecognized file extension: {fileExt}")
+                else:
+                    print(f"Provided path is not a file: {filePath}")
+                    iconPath = './tsuki/assets/GUI/resources/text_file.png'
+
+            print(f"Icon path: {iconPath}")
+
+            if not os.path.isfile(iconPath):
+                print(f"Icon file does not exist: {iconPath}")
+
+            self.tabWidget.addTab(textEdit, QIcon(iconPath), "未命名文档")
+            
+            textEdit.setLineWrapMode(QPlainTextEdit.NoWrap)
+            
+            logger.info("[Log/INFO] New File")
 
     def saveFile(self):
         savefile.saveFile(self)
@@ -1274,7 +1710,18 @@ class TsukiReader(QMainWindow):
 
 
     def checkForUpdates(self):
+        config_file_path = './tsuki/assets/app/config/update/update.cfg'
         version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/version.txt'
+        if os.path.exists(config_file_path):
+            config = configparser.ConfigParser()
+            config.read(config_file_path)
+            beta_version_status = config.get('BetaVersion', 'BetaVersion', fallback='off')
+            match beta_version_status:
+                case 'Activity':
+                    version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/Beta/version.txt'
+                case _:
+                    version_url = 'https://rmcl.zzbuaoye.us.kg/TsukiNotes/version.txt'
+        
         version = self.current_version
         try:
             response = requests.get(version_url, timeout=60)
@@ -1283,41 +1730,40 @@ class TsukiReader(QMainWindow):
                 self.statusBar().showMessage(
                     f'TsukiUpdate: 检测到云端版本号为:[ {latest_version} ] | 本地版本号:[ {version} ] 开始对比...')
                 logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
+                match latest_version:
+                    case _ if latest_version == self.current_version:
+                        QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
+                                                f'当前已经是最新版本✔: {latest_version} ！')
+                        self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！您已经是最新的版本：{latest_version}')
+                        logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
 
-                if latest_version == self.current_version:
-                    QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
-                                            f'当前已经是最新版本✔: {latest_version} ！')
-                    self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！您已经是最新的版本：{latest_version}')
-                    logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
+                    case _ if latest_version < self.current_version:
+                        QMessageBox.warning(self, 'TsukiNotes',
+                                            f'🚫您太超前了！云端没你更新快！！🚫')
+                        self.statusBar().showMessage(f'TsukiUpdate❓: [ 当前版本号{version} > 云端{latest_version} ] 您可能不是Fv通道')
+                        logger.warning(f"[Log/WARNING]Check For Updates: {latest_version}")
 
-                elif latest_version < self.current_version:
-                    QMessageBox.warning(self, 'TsukiNotes',
-                                        f'🚫您太超前了！云端没你更新快！！🚫')
-                    self.statusBar().showMessage(f'TsukiUpdate❓: [ 当前版本号{version} > 云端{latest_version} ] 您可能不是Fv通道')
-                    logger.warning(f"[Log/WARNING]Check For Updates: {latest_version}")
+                    case _ if latest_version > self.current_version:
+                        reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
+                                                    f'🔰✔叮！\nTsukiNotes有全新版本啦！\n最新版本号: {latest_version}\n您的版本号: {version} \n 文件: [Tsuki Notes {latest_version}]',
+                                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                        self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！您有新版本：{latest_version}')
+                        logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
 
-                elif latest_version > self.current_version:
-                    reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
-                                                 f'🔰✔叮！\nTsukiNotes有全新版本啦！\n最新版本号: {latest_version}\n您的版本号: {version} \n 文件: [Tsuki Notes {latest_version}]',
-                                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！您有新版本：{latest_version}')
-                    logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
-
-                    if reply == QMessageBox.Yes:
-                        webbrowser.open(
-                            'https://zstlya-my.sharepoint.com/:f:/g/personal/zz_zstlya_onmicrosoft_com/EiGVt3ZyYFZPgQu5qxsTNIQB2y0UjGvjBKMRmOfZJ-L3yg?e=iZD2iL')
-                        logger.info(f"[Log/INFO]open web")
-                else:
-                    QMessageBox.warning(self, '检测更新',
-                                        f'[未能成功检测最新版本]\n可能是你的客户端过新导致的\n我们建议您尝试手动更新！\n当前版本: {version}|云端: {latest_version}\n')
-                    logger.warning(f"[Log/ERROR]Warn,Client Version So New")
+                        if reply == QMessageBox.Yes:
+                            webbrowser.open('https://rmcl.zzbuaoye.us.kg/TsukiNotes/download_url')  # 根据实际情况修改下载链接
+                            logger.info(f"[Log/INFO]Open Web")
+                    case _:
+                        QMessageBox.warning(self, '检测更新',
+                                            f'[未能成功检测最新版本]\n可能是你的客户端过新导致的\n我们建议您尝试手动更新！\n当前版本: {version}|云端: {latest_version}\n')
+                        logger.warning(f"[Log/ERROR]Warn,Client Version So New")
             else:
                 QMessageBox.warning(self, '检测更新失败',
                                     f'[无法获取版本信息]\n这可能是因为服务器掉线导致的\n当然您需要自行检测您的网络是否正常\n我们将为你启动备选方案\n请您尝试手动更新吧\n是否打开？\n ')
 
         except Exception as e:
             QMessageBox.critical(self, '检测更新|错误',
-                                 f'出错啦！ \nOccurred:\n{str(e)}\n 您可以尝试使用加速器加速GitHub\n 或者尝试手动更新吧')
+                                f'出错啦！ \nOccurred:\n{str(e)}\n 您可以尝试使用加速器加速GitHub\n 或者尝试手动更新吧')
             logger.error(f"[Log/ERROR]Check For Updates Error: {e}")
             self.statusBar().showMessage(f'TsukiUpdate❌: 检测失败！')
 
@@ -1393,7 +1839,7 @@ class TsukiReader(QMainWindow):
             self.statusBar().showMessage(f'TsukiUpdate[2]✔: 您已选择浏览zzbuaoye0已经为您跳转至浏览器')
             logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == newversionButton:
-            webbrowser.open(f'https://rmcl.zzbuaoye.us.kg/{version}/1.5.1/update.txt')
+            webbrowser.open(f'https://rmcl.zzbuaoye.us.kg/TsukiNotes/{version}/update.txt')
             logger.info(f"[Log/INFO]Open Web {webbrowser.open}")
         elif msgBox.clickedButton() == cancelButton:
             self.statusBar().showMessage(f'TsukiUpdate[2]🚫: 您已取消操作')
@@ -1423,58 +1869,6 @@ class TsukiReader(QMainWindow):
         self.statusBar().showMessage(f'TsukiINFO: [{versiongj}] | [{self.version_td}] | [{self.update_Date}] ')
         logger.info(f"[Log/INFO]Open AboutDetails.def\n")
 
-    # def updateMessage(self):
-    #     version = self.current_version  # 版本
-    #     versiontime = self.version_gj  # gj是内部版本号
-    #     version_td = self.version_td  # 通道
-    #     update_time = self.update_Date  # 更新时间
-
-    #     update_text = (
-    #         "<html>"
-    #         "<h2 style='text-align: left;'>| TsukiNotes Update Information🛠</h2>"
-    #         f"<p style='text-align: center;'>Version:{version} {version_td}[{update_time}]</p>"
-    #         "</html>"
-    #         f"======================================================================================<br>"
-    #         f" *[质量]1.优化OpenFile，支持打开16进制文件[.exe .dat .bin之类]<br>"
-    #         f" *[优化]2.重构Create New Tab的函数<br>"
-    #         f" *[修复]3.打开文件过大时软件卡死崩溃<br>"
-    #         f" *[测试]4.加入多代码高亮显示[Cpp + Python + Java + MarkDown]<br>"
-    #         f" *[优化]5.加入Cython提升打开16进制文件效率<br>"
-    #         f" *[优化]6.修改logging上色逻辑<br>"
-    #         f" *[修复]7.修改一切版本更新<br>"
-    #         f" *[修复]8.解决因为背景导致的显示异常<br>"
-    #         f" +[删减]9.删除大量废弃无用代码<br>"
-    #         f" +[新增]10.高亮优化<br>"
-    #         f" +[新增]11.修改多个高亮逻辑<br>"
-    #         f" +[优化]12.DEBUG的logging变成purple<br>"
-    #         f" +[改进]13.FULLVERSION全部替换为Release<br>"
-    #         f" *[新增]14.新增第一次运行弹出窗口<br>"
-    #         f" *[修复]15.软件图标异常<br>"
-    #         f"======================================================================================<br>"
-    #         f"<p style='text-align: center;'>[+代表细节优化|*代表重要改动]</p>"
-    #         f"<p style='text-align: center;'> || {version_td} ||</p>"
-    #         f"<p style='text-align: center;'>[内部版本号:{versiontime}]</p>"
-    #     )
-    #     dialog = QDialog(self)
-    #     dialog.setWindowTitle(f"TsukiNotes[{version}]更新日志 -Ver{version}{version_td}")
-    #     dialog.resize(600, 300)
-
-    #     layout = QVBoxLayout(dialog)
-    #     label = QLabel()
-    #     label.setTextFormat(Qt.RichText)
-    #     label.setText(update_text)
-    #     layout.addWidget(label)
-    #     label_font = QFont('Microsoft YaHei UI')  # 设置微软雅黑
-    #     label.setFont(label_font)
-    #     label.setAlignment(Qt.AlignLeft)
-
-    #     button_box = QDialogButtonBox(QDialogButtonBox.Ok)
-    #     button_box.accepted.connect(dialog.accept)
-    #     layout.addWidget(button_box)
-
-    #     dialog.exec_()
-    #     self.statusBar().showMessage('TsukiBack✔: 您打开了本地更新日志')
-    #     logger.info(f"[Log/INFO]Open Update Informathion Succeed")
 
     def getOnlineUpdateText(self):
         try:
@@ -1528,8 +1922,8 @@ class TsukiReader(QMainWindow):
         layout.addWidget(button_box)
         dialog.exec_()
 
-        self.statusBar().showMessage('TsukiBack✔: 您查看了在线更新日志')
-        logger.info(f"[Log/INFO]Open Online Update Information Succeed")
+        self.statusBar().showMessage('TsukiBack✔: 您查看了更新日志')
+        logger.info(f"[Log/INFO]Open Update Information Succeed")
 
 
 
@@ -1580,11 +1974,6 @@ class TsukiReader(QMainWindow):
                 return -1
         return 0
 
-    def cutTab(self):
-        version_td = self.version_td
-        version = self.current_version
-        cuttab = f"Ctrl + Z Undo \n Ctrl + Y Redo \n Ctrl + S Save \n Ctrl + F Search \n Ctrl + Shift + C Clear \n Ctrl + X Cut \n Ctrl + O Open \n Ctrl + T New Tab \n Ctrl + W Close Tab \n Version:{version}{version_td}  "
-        QMessageBox.information(self, "TsukiNotes Shortcut Key🔰", cuttab)
 
     def textChanged(self):
         self.text_modified = True
@@ -1613,7 +2002,6 @@ class TsukiReader(QMainWindow):
                 result = search_result_dialog.exec_()
 
                 if result == QDialog.Accepted:
-                    # 用户点击确定，将光标移到文本边上
                     cursor = QTextCursor(currentWidget.document())
                     cursor.setPosition(self.found_positions[search_result_dialog.current_index])
                     currentWidget.setTextCursor(cursor)
@@ -2022,6 +2410,8 @@ class TsukiReader(QMainWindow):
     def applySettings(self, include_whitespace, custom_lines):
         try:
             current_widget = self.tabWidget.currentWidget()
+            if not isinstance(current_widget, QPlainTextEdit):
+                raise TypeError("当前小部件不是 QPlainTextEdit 类型")
             current_font = current_widget.font()
 
             default_font_size = 11
@@ -2039,6 +2429,7 @@ class TsukiReader(QMainWindow):
             QMessageBox.critical(self, '错误', f'应用设置时发生异常：{str(e)}')
             self.statusBar().showMessage(f'TsukiApplySetting❌: 应用设置时发生异常：{str(e)}')
             logger.error(f"[Log/ERROR]Apply Settings Failed:{str(e)}")
+
 
     def addKeywordHighlight(self):
         try:
@@ -2139,7 +2530,6 @@ class TsukiReader(QMainWindow):
     # setting函数End==============================================================
 
     def performSave(self):
-        # 标记文本已保存
         self.text_modified = False
         options = QFileDialog.Options()
         filters = "All Files (*);;Text Files (*.txt);;Markdown Files (*.md);;INI Files (*.ini);;XML Files (*.xml);" \

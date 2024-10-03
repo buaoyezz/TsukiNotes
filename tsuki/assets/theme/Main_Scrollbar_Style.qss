@@ -1,0 +1,61 @@
+/* 垂直滚动条样式 */
+QScrollBar:vertical {
+    border: 1px solid #bfbfbf;
+    background: #f0f0f0;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+    font-family: "Microsoft YaHei";
+}
+
+QScrollBar::handle:vertical {
+    background: #a0a0a0;
+    min-height: 20px;
+    font-family: "Microsoft YaHei";
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #909090;
+    font-family: "Microsoft YaHei";
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: none;
+    height: 0px;
+}
+
+/* 水平滚动条样式 */
+QScrollBar:horizontal {
+    border: 1px solid #bfbfbf;
+    background: #f0f0f0;
+    height: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #a0a0a0;
+    min-width: 20px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #909090;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    background: none;
+    width: 0px;
+}
+
+/* 公共样式，移除上下箭头 */
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical,
+QScrollBar::up-arrow:horizontal, QScrollBar::down-arrow:horizontal {
+    background: none;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+QDialog {
+    font-family: "Microsoft YaHei";  
+}

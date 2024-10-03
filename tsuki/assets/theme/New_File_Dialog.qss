@@ -1,0 +1,26 @@
+QDialog {
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    font-family: "Microsoft YaHei";
+}
+
+QLineEdit, QComboBox {
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: white;
+    font-family: "Microsoft YaHei";
+}
+
+QPushButton {
+    padding: 5px 15px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-family: "Microsoft YaHei";
+}
+
+QPushButton:hover {
+    background-color: #45a049;
+}

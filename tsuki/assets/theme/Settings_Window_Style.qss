@@ -1,0 +1,26 @@
+QDialog {
+    background-color: #f0f0f0;
+}
+
+QListWidget {
+    background-color: #333333; 
+    color: white;
+    border: none;
+    outline: 0px;
+}
+
+QListWidget::item {
+    padding: 10px;
+    font-size: 14px;
+    font-family: "Microsoft YaHei";
+}
+
+QListWidget::item:selected {
+    background-color: #555555;  
+    border: none;
+}
+
+QLabel {
+    color: #333333;  
+    font-size: 14px;
+}

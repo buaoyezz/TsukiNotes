@@ -1,0 +1,35 @@
+QMessageBox {
+    background-image: url('./tsuki/assets/app/default/default_light.png');
+    background-position: center;
+    border: 1px solid; 
+    border-radius: 10px; 
+    padding: 100px; 
+}
+
+QMessageBox QLabel {
+    color: black;
+    font-size: 12px; 
+    font-family: "Microsoft YaHei UI";
+    qproperty-alignment: AlignLeft; 
+}
+
+QMessageBox QPushButton {
+    background-color: #0078d4;
+    color: white; 
+    border: none; 
+    border-radius: 10px; 
+    padding: 12px 24px; 
+    font-size: 12px; 
+    min-width: 120px;
+    margin: 10px; 
+    font-family: "Microsoft YaHei UI";
+}
+
+QMessageBox QPushButton:pressed {
+    background-color: #005a9e; 
+}
+
+QMessageBox QPushButton:default {
+    border: 2px solid #0078d4;
+    background-color: lightblue;
+}

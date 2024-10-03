@@ -1,0 +1,30 @@
+QMessageBox {
+    background-color: #f0f0f0;
+    border-radius: 10px;
+}
+
+QMessageBox QLabel {
+    color: #333;
+    font-size: 14px;
+    font-family: "Microsoft YaHei";
+}
+
+QPushButton {
+    background-color: #4a86e8;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 14px;
+    min-width: 120px;
+    margin: 10px;
+    font-family: "Microsoft YaHei";
+}
+
+QPushButton:hover {
+    background-color: #3a76d8;
+}
+
+QPushButton:pressed {
+    background-color: #2a66c8;
+}

@@ -2234,7 +2234,7 @@ class TsukiReader(QMainWindow):
     def getOnlineUpdateText(self):
         try:
             ver = self.current_version
-            update_log_url = f'https://rmcl.zzbuaoye.us.kg/TsukiNotes/{ver}/update.txt'
+            update_log_url = f'https://zzbuaoye.us.kg/TsukiNotes/{ver}/update.txt'
             response = requests.get(update_log_url)
             
             if response.status_code == 200:
@@ -2648,7 +2648,7 @@ class TsukiReader(QMainWindow):
                 return False
         status_bar = self.statusBar()
         icon_path = "tsuki/assets/ico/logo.ico"
-        download_url = "https://rmcl.zzbuaoye.us.kg/TsukiNotes/logo.ico"
+        download_url = "https://zzbuaoye.us.kg/TsukiNotes/logo.ico"
         manual_download_url = "https://www.123pan.com/s/ZhtbVv-plgV3.html"
         if ctypes.windll.shell32.IsUserAnAdmin():
             # 如果用户是管理员
@@ -3073,7 +3073,7 @@ class TsukiReader(QMainWindow):
             self.handlePingError(f"无法 ping 到 {ping_host1}。")
 
     def handlePingError(self, error_message):
-        ping_host1 = 'rmcl.zzbuaoye.us.kg'
+        ping_host1 = 'zzbuaoye.us.kg'
 
         server_names = [f'Tsuki Back：{ping_host1}']
         for server_name in server_names:

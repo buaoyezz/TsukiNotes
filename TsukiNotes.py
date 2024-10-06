@@ -20,11 +20,15 @@ import time
 import json
 import configparser
 import colorlog
+import threading
+import zipfile
 from datetime import datetime
 from socket import socket
 from turtle import color, pos
 from packaging import version
 import ping3
+from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal, QPoint, QObject, QMetaType, QMetaObject
+from PyQt5.QtGui import QTextCursor
 from PyQt5.QtGui import (
     QFont, QIcon, QTextCharFormat, QColor, QTextCursor, QKeySequence, QSyntaxHighlighter,
     QPixmap, QPalette, QBrush, QPainter
@@ -34,9 +38,9 @@ from PyQt5.QtWidgets import (
     QTabWidget, QInputDialog, QMenu, QMessageBox, QPushButton, QShortcut,
     QLabel, QTextBrowser, QVBoxLayout, QCheckBox, QWidget, QPlainTextEdit,
     QColorDialog, QDialog, QToolBar, QLineEdit, QDialogButtonBox, QGridLayout,
-    QSpacerItem, QSizePolicy, QComboBox
+    QSpacerItem, QSizePolicy, QComboBox, QProgressDialog
 )
-from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal,QPoint,QObject
+from PyQt5.QtCore import QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal,QPoint,QObject,QMetaType, QMetaObject
 from PyQt5.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout, QDialog, QPushButton, QLabel
 from sympy import sympify, SympifyError
 from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, parse_expr
@@ -346,6 +350,7 @@ class CustomTextEdit(QTextEdit):
 
 class FileLoaderThread(QThread):
     dataLoaded = pyqtSignal(list)
+    updateGui = pyqtSignal(str)  # 新增信号
 
     def __init__(self, fileName):
         super().__init__()
@@ -354,6 +359,8 @@ class FileLoaderThread(QThread):
     def run(self):
         chunks = cython_utils.read_file_in_chunks(self.fileName)
         self.dataLoaded.emit(chunks)
+        self.updateGui.emit("File loaded")  # 发送信号而不是直接更新 GUI
+
 
 class SyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
@@ -836,13 +843,15 @@ class TsukiReader(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        QMetaType.type("QTextCursor")
         self.before = ''
-        self.current_version = '1.5.4' 
-        self.real_version = '1.5.4'
-        self.update_Date = '2024/10/03'
+        self.current_version = '1.5.5' 
+        self.real_version = '1.5.5'
+        self.update_Date = '2024/10/06'
         self.version_td = 'Release'
-        self.version_gj = 'b-v154B-241003'
+        self.version_gj = 'b-v155B-241006R'
         self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
+        
 
         logging.debug(f"\n====================================================================================================================\n"
                       f"[Log/INFO]TsukiReader is running ,relatedInformation:"
@@ -862,8 +871,88 @@ class TsukiReader(QMainWindow):
         self.connectCurrentWidgetSignals()
         self.tabWidget.currentChanged.connect(self.updateStatusLabel)
         self.initialize_settings()
+        self.tabWidget.setTabsClosable(True)
+        self.tabWidget.tabCloseRequested.connect(self.closeTab)
+        
 
         self.loadScrollbarStyle()
+        self.setTabCloseButtonStyle()
+        self.tabWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tabWidget.customContextMenuRequested.connect(self.showTabContextMenu)
+
+        # 添加 "+" 按钮到标签栏
+        self.add_tab_button = QPushButton()
+        self.add_tab_button.setIcon(QIcon('./tsuki/assets/GUI/resources/tips.png'))
+        self.add_tab_button.setFixedSize(24, 24)
+        self.add_tab_button.clicked.connect(self.newFile)
+
+        # 将 "+" 按钮添加到标签栏的右侧
+        self.tabWidget.setCornerWidget(self.add_tab_button, Qt.TopRightCorner)
+
+        self.setTabBarStyle()
+
+    def setTabBarStyle(self):
+        style = """
+        QTabBar::tab {
+            background-color: #f0f0f0;
+            color: #333333;
+            border: 1px solid #c0c0c0;
+            padding: 5px 10px;
+            margin-right: 2px;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+        }
+        QTabBar::tab:selected, QTabBar::tab:hover {
+            background-color: #ffffff;
+        }
+        QTabBar::tab:selected {
+            border-bottom-color: #ffffff;
+        }
+        QTabBar::close-button {
+            image: url(./tsuki/assets/GUI/resources/error.png);
+            subcontrol-position: right;
+        }
+        QTabBar::close-button:hover {
+            image: url(./tsuki/assets/GUI/resources/off_file.png);
+        }
+        QPushButton#addTabButton {
+            border: none;
+            background-color: transparent;
+        }
+        QPushButton#addTabButton:hover {
+            background-color: #e0e0e0;
+        }
+        """
+        self.setStyleSheet(style)
+
+
+    def showTabContextMenu(self, pos):
+        index = self.tabWidget.tabBar().tabAt(pos)
+        menu = QMenu(self)
+
+        if index != -1:
+            rename_action = menu.addAction("重命名标签")
+            rename_action.triggered.connect(lambda: self.renameTab(index))
+
+            close_action = menu.addAction("关闭标签")
+            close_action.triggered.connect(lambda: self.closeTab(index))
+        else:
+            new_tab_action = menu.addAction("新建标签")
+            new_tab_action.triggered.connect(self.newFile)
+
+        menu.exec_(self.tabWidget.mapToGlobal(pos))
+
+
+    def setTabCloseButtonStyle(self):
+        style = """
+        QTabBar::close-button {
+            image: url(./tsuki/assets/GUI/resources/error.png);
+        }
+        QTabBar::close-button:hover {
+            image: url(./tsuki/assets/GUI/resources/off_file.png);
+        }
+        """
+        self.setStyleSheet(style)
 
     def loadScrollbarStyle(self):
         qss_file_path = './tsuki/assets/theme/Main_Scrollbar_Style.qss'
@@ -889,6 +978,9 @@ class TsukiReader(QMainWindow):
         self.setWindowTitle('TsukiNotes')
         self.setWindowIcon(QIcon('./tsuki/assets/GUI/ico/logo.ico'))
         logging.debug("initUI initialization is complete")
+        self.tabWidget.setTabsClosable(True)
+        self.tabWidget.tabCloseRequested.connect(self.closeTab)
+        
 
         self.text_edit = QPlainTextEdit()
 
@@ -1171,7 +1263,7 @@ class TsukiReader(QMainWindow):
         self.newAct.triggered.connect(self.newFile)
 
         self.openAct = QAction(QIcon('./tsuki/assets/GUI/resources/import_file.png'),'打开文件（Ctrl+O）', self)
-        self.openAct.triggered.connect(lambda: (self.openFile("")))
+        self.openAct.triggered.connect(self.openFile)
 
         self.saveAct = QAction(QIcon('./tsuki/assets/GUI/resources/save_file.png'), '保存修改（Ctrl+S）', self)
         self.saveAct.triggered.connect(self.saveFile)
@@ -1498,14 +1590,22 @@ class TsukiReader(QMainWindow):
         return font_name
 
     def openFile(self, fileName):
-        
-        if fileName == "":
+        if not fileName:
             options = QFileDialog.Options()
             filters = "Text Files (*.txt *.md *.ini *.xml *.json *.log *.py *.cpp *.java *.tnote);;16进制文件 (*.exe);;所有文件 (*)"
             fileName, _ = QFileDialog.getOpenFileName(self, 'Open File', '', filters, options=options)
+            if fileName:  # 确保文件名不为空
+                try:
+                    encoding = self.detectFileEncoding(fileName)  # 检测文件编码
+                    self.createNewTab(fileName, encoding)
+                except TypeError as e:
+                    logging.error(f"创建新标签页时出错: {e}")
 
         if fileName:
             try:
+                file_extension = os.path.splitext(fileName)[1].lower()
+                icon_map = self.getIconMap()
+                
                 if fileName.endswith(('.exe', '.pyd')):
                     self.openHexFileInTab(fileName)
                 else:
@@ -1513,6 +1613,11 @@ class TsukiReader(QMainWindow):
                     self.current_encoding = encoding  
                     if not self.openFileInTab(fileName, encoding):
                         self.createNewTab(fileName, encoding)
+                        if file_extension in icon_map:
+                            icon_path = icon_map[file_extension]
+                            self.tabWidget.setTabIcon(self.tabWidget.currentIndex(), QIcon(icon_path))
+                        else:
+                            self.tabWidget.setTabText(self.tabWidget.currentIndex(), os.path.basename(fileName))
 
                 self.updateWindowTitle(fileName)
                 self.statusBar().showMessage(f'TsukiOpen✔: 文件 [{fileName}] 已成功在TsukiNotes内打开！')
@@ -1548,6 +1653,16 @@ class TsukiReader(QMainWindow):
                 logger.info(f"[Log/INFO]Font set to: {font.family()}")
 
                 self.apply_background_settings(currentWidget)
+
+                if file_extension in icon_map:
+                    icon_path = icon_map[file_extension]
+                    self.tabWidget.addTab(currentWidget, QIcon(icon_path), os.path.basename(fileName))
+                else:
+                    self.tabWidget.addTab(currentWidget, os.path.basename(fileName))
+                self.tabWidget.setCurrentWidget(currentWidget)
+                self.updateTabIcon(self.tabWidget.count() - 1)
+                currentWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+                currentWidget.customContextMenuRequested.connect(self.showContextMenu)
 
             except UnicodeDecodeError as e:
                 self.handleError('Open File', fileName, f"编码错误: {e}，尝试使用其他编码打开文件。")
@@ -1841,7 +1956,7 @@ class TsukiReader(QMainWindow):
         finally:
             self.close_debug_window()
             self.statusBar().showMessage("TsukiRunCode✔: 运行结束,调试窗口自动关闭", 5000)  
-
+    
     def newFile(self, filePath='./tsuki/assets/resources/'):
         textEdit = QPlainTextEdit()
         
@@ -1851,7 +1966,7 @@ class TsukiReader(QMainWindow):
         logging.info(f"[Log/INFO] Font set to: Microsoft YaHei, point size: 10")
         
         logging.info(f"Received filePath: {filePath}")
- 
+
         if self.tabWidget.count() == 0:
             tab_name = "原始文本"
             file_encoding = "UTF-8"
@@ -1872,6 +1987,9 @@ class TsukiReader(QMainWindow):
         # 设置右键菜单
         textEdit.setContextMenuPolicy(Qt.CustomContextMenu)
         textEdit.customContextMenuRequested.connect(self.showContextMenu)
+
+        # 更新状态栏
+        self.statusBar().showMessage(f'TsukiTab✔: 新建标签页 "{tab_name}" 成功')
         
 
 
@@ -1980,7 +2098,6 @@ class TsukiReader(QMainWindow):
             '.c' : './tsuki/assets/GUI/resources/language/c.png',
             '.java': './tsuki/assets/GUI/resources/language/java.png',
             '.class' : './tsuki/assets/GUI/resources/language/class.png',
-            '.txt': './tsuki/assets/GUI/resources/language/text_file.png',
             '.md': './tsuki/assets/GUI/resources/language/markdown.png',
             '.markdown': './tsuki/assets/GUI/resources/language/markdown.png',
             '.html': './tsuki/assets/GUI/resources/language/html.png',
@@ -1989,6 +2106,8 @@ class TsukiReader(QMainWindow):
             '.php': './tsuki/assets/GUI/resources/language/php.png',
             '.json': './tsuki/assets/GUI/resources/language/json.png',
             '.otf': './tsuki/assets/GUI/resources/language/otf.png',
+            '.ini': './tsuki/assets/GUI/resources/language/ini.png', # Nope
+            '.txt': './tsuki/assets/GUI/resources/language/text.png', 
         }
 
     def getIconPath(self, file_name):
@@ -2030,8 +2149,12 @@ class TsukiReader(QMainWindow):
     def updateTabIcon(self, index):
         tab_text = self.tabWidget.tabText(index)
         icon_path = self.getIconPath(tab_text)
-        self.tabWidget.setTabIcon(index, QIcon(icon_path))
-        # logging.info(f"图标更新成功: {icon_path}")
+        icon = QIcon(icon_path)
+        close_icon = QIcon('./tsuki/assets/GUI/resources/close.png')
+        merged_icon = QIcon()
+        merged_icon.addPixmap(icon.pixmap(16, 16))
+        merged_icon.addPixmap(close_icon.pixmap(16, 16), QIcon.Normal, QIcon.On)
+        self.tabWidget.setTabIcon(index, merged_icon)
         
 
     def saveFile(self):
@@ -2048,9 +2171,12 @@ class TsukiReader(QMainWindow):
     def closeTab(self, index):
         try:
             tab_count = self.tabWidget.count()
-            tab_now = self.tabWidget.count() -1 
             if tab_count > 1:
+                widget = self.tabWidget.widget(index)
+                if widget is not None:
+                    widget.deleteLater()
                 self.tabWidget.removeTab(index)
+                tab_now = self.tabWidget.count()
                 self.statusBar().showMessage(f'TsukiTab✔: 成功关闭标签页,还有 {tab_now} 个Tab保留')
                 logger.info(f"[Log/INFO]Close Tab: {index}")
             else:
@@ -2069,50 +2195,34 @@ class TsukiReader(QMainWindow):
             config = configparser.ConfigParser()
             config.read(config_file_path)
             beta_version_status = config.get('BetaVersion', 'BetaVersion', fallback='off')
-            match beta_version_status:
-                case 'Activity':
-                    version_url = 'https://zzbuaoye.us.kg/TsukiNotes/Beta/version.txt'
-                case _:
-                    version_url = 'https://zzbuaoye.us.kg/TsukiNotes/version.txt'
+            if beta_version_status.lower() == 'activity':
+                version_url = 'https://zzbuaoye.us.kg/TsukiNotes/Beta/version.txt'
         
-        version = self.current_version
         try:
             response = requests.get(version_url, timeout=60)
             if response.status_code == 200:
-                latest_version = response.text.strip()
-                self.statusBar().showMessage(
-                    f'TsukiUpdate: 检测到云端版本号为:[ {latest_version} ] | 本地版本号:[ {version} ] 开始对比...')
-                logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
-                match latest_version:
-                    case _ if latest_version == self.current_version:
-                        QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
-                                                f'当前已经是最新版本✔: {latest_version} ！')
-                        self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！您已经是最新的版本：{latest_version}')
-                        logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
+                content = response.text.strip().split('\n')
+                update_link = None
+                
+                for line in content:
+                    if line.lower().startswith('update_link:'):
+                        update_link = line.split(':', 1)[1].strip()
+                        break
+                
+                if update_link:
+                    reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
+                                                f'🔰✔叮！\nTsukiNotes有新的更新包可用。是否下载并安装？',
+                                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！发现新的更新包')
 
-                    case _ if latest_version < self.current_version:
-                        QMessageBox.warning(self, 'TsukiNotes',
-                                            f'🚫您太超前了！云端没你更新快！！🚫')
-                        self.statusBar().showMessage(f'TsukiUpdate❓: [ 当前版本号{version} > 云端{latest_version} ] 您可能不是Fv通道')
-                        logger.warning(f"[Log/WARNING]Check For Updates: {latest_version}")
-
-                    case _ if latest_version > self.current_version:
-                        reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
-                                                    f'🔰✔叮！\nTsukiNotes有全新版本啦！\n最新版本号: {latest_version}\n您的版本号: {version} \n 文件: [Tsuki Notes {latest_version}]',
-                                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                        self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！您有新版本：{latest_version}')
-                        logger.info(f"[Log/INFO]Check For Updates: {latest_version}")
-
-                        if reply == QMessageBox.Yes:
-                            webbrowser.open('https://zzbuaoye.us.kg/TsukiNotes/download_url')  # 根据实际情况修改下载链接
-                            logger.info(f"[Log/INFO]Open Web")
-                    case _:
-                        QMessageBox.warning(self, '检测更新',
-                                            f'[未能成功检测最新版本]\n可能是你的客户端过新导致的\n我们建议您尝试手动更新！\n当前版本: {version}|云端: {latest_version}\n')
-                        logger.warning(f"[Log/ERROR]Warn,Client Version So New")
+                    if reply == QMessageBox.Yes:
+                        self.download_and_install_update(update_link, "latest")
+                else:
+                    QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
+                                            f'当前没有可用的更新包。')
+                    self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！没有发现新的更新包')
             else:
-                QMessageBox.warning(self, '检测更新失败',
-                                    f'[无法获取版本信息]\n这可能是因为服务器掉线导致的\n当然您需要自行检测您的网络是否正常\n我们将为你启动备选方案\n请您尝试手动更新吧\n是否打开？\n ')
+                raise ConnectionError("无法连接到服务器")
 
         except Exception as e:
             QMessageBox.critical(self, '检测更新|错误',
@@ -2120,6 +2230,45 @@ class TsukiReader(QMainWindow):
             logger.error(f"[Log/ERROR]Check For Updates Error: {e}")
             self.statusBar().showMessage(f'TsukiUpdate❌: 检测失败！')
 
+    def download_and_install_update(self, update_link, latest_version):
+        download_dialog = QProgressDialog("下载更新中...", "取消", 0, 100, self)
+        download_dialog.setWindowTitle("下载更新")
+        download_dialog.setWindowModality(Qt.WindowModal)
+        download_dialog.show()
+
+        try:
+            response = requests.get(update_link, stream=True)
+            total_length = response.headers.get('content-length')
+
+            if total_length is None:  # no content length header
+                download_dialog.close()
+                QMessageBox.critical(self, '下载更新失败', '无法获取文件大小')
+            else:
+                dl = 0
+                total_length = int(total_length)
+                update_filename = f'TsukiNotes_UpdatePack_{latest_version}.zip'
+                with open(update_filename, 'wb') as f:
+                    for data in response.iter_content(chunk_size=4096):
+                        dl += len(data)
+                        f.write(data)
+                        done = int(50 * dl / total_length)
+                        download_dialog.setValue(done)
+                        QApplication.processEvents()  # 更新UI
+                        if download_dialog.wasCanceled():
+                            QMessageBox.warning(self, '下载更新', '下载已取消')
+                            return
+
+                with zipfile.ZipFile(update_filename, 'r') as zip_ref:
+                    zip_ref.extractall('.')
+                os.remove(update_filename)
+                download_dialog.setValue(100)
+                QMessageBox.information(self, '更新完成', f'更新已下载并解压，将重启应用。版本号: {latest_version}')
+                subprocess.run(["python", "TsukiNotes.py"])  # 重启应用
+                sys.exit()
+        except Exception as e:
+            download_dialog.close()
+            QMessageBox.critical(self, '下载更新失败', f'下载或安装更新失败：{str(e)}')
+            logger.error(f"[Log/ERROR]Download Update Error: {e}")
     def url_msg(self):
         versiongj = self.version_gj
         versiontime = self.update_Date
@@ -2261,7 +2410,7 @@ class TsukiReader(QMainWindow):
             f"======================================================================================<br>"
             f"{online_update_text}<br>"
             f"======================================================================================<br>"
-            f"<p style='text-align: center;'>[+代表细节优化|*代表重要改动]</p>"
+            f"<p style='text-align: center;'>[+代表细节优化|*代表重���改动]</p>"
             f"<p style='text-align: center;'> || {version_td} ||</p>"
             f"<p style='text-align: center;'>[内部版本号:{versiontime}]</p>"
         )
@@ -2288,24 +2437,47 @@ class TsukiReader(QMainWindow):
 
 
 
-    def renameTab(self):
-        current_index = self.tabWidget.currentIndex()
+    def renameTab(self, index):
+        current_name = self.tabWidget.tabText(index)
         
-        dialog = ReNameDialog(self, "重命名", "新的名称:")
+        dialog = QDialog(self)
+        dialog.setWindowTitle("重命名标签")
+        layout = QVBoxLayout(dialog)
         
+        name_input = QLineEdit(current_name)
+        layout.addWidget(name_input)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        
+        # 加载QSS文件
         qss_file_path = './tsuki/assets/theme/Tab_Rename.qss'
         try:
-            with open(qss_file_path, 'r') as file:
+            with open(qss_file_path, 'r', encoding='utf-8') as file:
                 qss = file.read()
                 dialog.setStyleSheet(qss)
         except Exception as e:
             self.statusBar().showMessage(f'应用QSS样式失败: {e}')
+            logger.error(f"加载重命名对话框样式失败: {e}")
 
         if dialog.exec_() == QDialog.Accepted:
-            tab_name = dialog.getText()
-            if tab_name:
-                self.tabWidget.setTabText(current_index, tab_name)
-                self.statusBar().showMessage(f'TsukiNotesTab✔： 成功重命名标签页 -> [{tab_name}]')
+            new_name = name_input.text().strip()
+            if new_name and new_name != current_name:
+                self.tabWidget.setTabText(index, new_name)
+                self.updateTabIcon(index)  # 更新图标
+                self.statusBar().showMessage(f'TsukiTab✔: 标签已重命名为 "{new_name}"')
+                logger.info(f"[Log/INFO] Tab renamed: {current_name} -> {new_name}")
+            elif not new_name:
+                QMessageBox.warning(self, "重命名失败", "标签名不能为空")
+                logger.warning("[Log/WARNING] Attempted to rename tab with empty name")
+            else:
+                self.statusBar().showMessage('TsukiTab: 标签名未更改')
+                logger.info(f"[Log/INFO] Tab name unchanged: {current_name}")
+    def closeTab(self, index):
+        self.tabWidget.removeTab(index)
+
     
 
     def mousePressEvent(self, event):
@@ -2445,7 +2617,7 @@ class TsukiReader(QMainWindow):
         settings.setValue('backgroundImage', image_path)
         settings.setValue('backgroundTransparency', transparency)
 
-    def load_background_settings(self):
+    def load_background_settings(self, widget=None):
         config = configparser.ConfigParser()
         default_image_path = './tsuki/assets/app/default/default_light.png'
         config_path = 'tsuki/assets/app/cfg/background/background_color.ini'
@@ -2467,15 +2639,15 @@ class TsukiReader(QMainWindow):
                 message = f'背景图片不存在，加载默认背景图片 {image_path}！'
             
             # 更新当前 widget 的样式表
-            current_widget = self.tabWidget.currentWidget()
-            if current_widget:
-                current_widget.setStyleSheet(style_sheet_image)
+            if widget:
+                widget.setStyleSheet(style_sheet_image)
+            elif self.tabWidget.currentWidget():
+                self.tabWidget.currentWidget().setStyleSheet(style_sheet_image)
             
             # 显示状态信息
             self.statusBar().showMessage(f'TsukiBC✔: {message}')
             logger.info(f"[Log/INFO] {message}")
             
-            # 更新配置文件中的图片路径
             config['Background'] = {'image_path': image_path}
             with open(config_path, 'w', encoding='utf-8') as configfile:
                 config.write(configfile)
@@ -2956,7 +3128,7 @@ class TsukiReader(QMainWindow):
         self.text_modified = False
         options = QFileDialog.Options()
         current_tab_name = self.tabWidget.tabText(self.tabWidget.currentIndex())
-        filters = f"所有文件 (*);;文本文件 (*.txt);;Markdown 文件 (*.md);;INI 文件 (*.ini);;XML 文件 (*.xml);" \
+        filters = f"所���文件 (*);;文本文件 (*.txt);;Markdown 文件 (*.md);;INI 文件 (*.ini);;XML 文件 (*.xml);" \
                   f"JSON 文件 (*.json);;日志文件 (*.log);;Python 文件 (*.py);;C 文件 (*.c)"
         fileName, selectedFilter = QFileDialog.getSaveFileName(self, f'保存文件 - {current_tab_name}', '', filters, options=options)
         if fileName:

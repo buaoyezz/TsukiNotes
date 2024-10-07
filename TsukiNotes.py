@@ -33,6 +33,9 @@ from PyQt5.QtGui import (
     QFont, QIcon, QTextCharFormat, QColor, QTextCursor, QKeySequence, QSyntaxHighlighter,
     QPixmap, QPalette, QBrush, QPainter
 )
+import re
+from PyQt5.QtCore import QRegExp
+from PyQt5.QtGui import QColor, QTextCharFormat, QFont, QSyntaxHighlighter
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QAction, QFileDialog, QFontDialog,
     QTabWidget, QInputDialog, QMenu, QMessageBox, QPushButton, QShortcut,
@@ -379,6 +382,7 @@ class SyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(index, length, format)
                 index = expression.indexIn(text, index + length)
 
+
         start_index = 0
         if self.previousBlockState() != 1:
             start_index = self.comment_pattern[0].indexIn(text)
@@ -405,38 +409,108 @@ class SyntaxHighlighter(QSyntaxHighlighter):
                 index = expression.indexIn(text, index + length)
 
         self.setCurrentBlockState(1)
+        self.highlightMultilineComments(text)
 
 class PythonHighlighter(SyntaxHighlighter):
     def __init__(self, light=True, parent=None):
         super().__init__(parent)
-        self.l = light
+        self.light = light
         
-        keyword_format = QTextCharFormat()
-        keyword_format.setForeground(QColor("#FFD700" if light else "#FFA500"))  # 更鲜艳的颜色
-        keyword_format.setFontWeight(QFont.Bold)
-        keywords = [
-            "and", "as", "assert", "break", "class", "continue", "def",
-            "del", "elif", "else", "except", "finally", "for",
-            "from", "global", "if", "import", "in", "is", "lambda",
-            "not", "or", "pass", "raise", "return", "try",
-            "while", "with", "yield", "None", "True", "False",
-            "async", "await", "nonlocal", "self"  # 新增 'self'
-        ]
-        self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
-                                 for keyword in keywords]
+        # 定义更柔和的颜色
+        self.colors = {
+            'keyword': "#6A5ACD",
+            'builtin': "#4169E1",
+            'string': "#32CD32",  # 改为好看见的绿色
+            'function': "#8B4513",
+            'comment': "#708090",
+            'decorator': "#A0522D",
+            'number': "#800080",
+            'special': "#B22222",
+            'qt': "#4682B4",
+            'color_code': "#8B008B",
+            'class': "#2F4F4F",
+            'param': "#696969",
+            'operator': "#8B0000",
+            'bracket': "#2F4F4F"
+        }
 
-        quotation_format = QTextCharFormat()
-        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22"))  # 更鲜艳的颜色
-        self.quotation_pattern = (QRegExp(r"\".*\"|'.*'"), quotation_format)  # 支持单引号字符串
+        # 创建格式
+        self.formats = {key: self.create_format(color) for key, color in self.colors.items()}
+        
+        # 定义关键词和模式
+        self.patterns = {
+            'keyword': r"\b(and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|not|or|pass|raise|return|try|while|with|yield|None|True|False|async|await|nonlocal)\b",
+            'builtin': r"\b(abs|all|any|ascii|bin|bool|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\b",
+            'string': r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\')',
+            'function': r"\b([A-Za-z_][A-Za-z0-9_]*(?=\s*\())",
+            'comment': r"(#[^\n]*)",
+            'decorator': r"(@\w+)",
+            'number': r"\b([+-]?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\b",
+            'special': r"(\\[nrtfvb]|/\S+)",
+            'qt': r"\b(QMessage|Dialog|QWidget|QMainWindow|QApplication)\b",
+            'color_code': r"(#[0-9A-Fa-f]{3,6})",
+            'class': r"\b(class\s+(\w+))",
+            'param': r"\b(?<=def\s+\w+\()[\w,\s=]+(?=\):)",
+            'operator': r"(\+|-|\*|/|%|=|<|>|&|\||\^|~|@)",
+            'bracket': r"(\(|\)|\[|\]|\{|\})"
+        }
 
-        function_format = QTextCharFormat()
-        function_format.setFontItalic(True)
-        function_format.setForeground(QColor("#00BFFF" if light else "#1E90FF"))  # 更鲜艳的颜色
-        self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
+        # 编译正则表达式
+        self.regex = {key: QRegExp(pattern) for key, pattern in self.patterns.items()}
 
-        comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))  # 更鲜艳的颜色
-        self.comment_pattern = (QRegExp(r"#.*"), comment_format)
+    def create_format(self, color):
+        format = QTextCharFormat()
+        format.setForeground(QColor(color))
+        format.setFontWeight(QFont.Bold)
+        return format
+
+    def highlightBlock(self, text):
+        for key, regex in self.regex.items():
+            index = regex.indexIn(text)
+            while index >= 0:
+                length = regex.matchedLength()
+                self.setFormat(index, length, self.formats[key])
+                index = regex.indexIn(text, index + length)
+
+        # 特殊处理多行注释
+        self.highlightMultilineComments(text)
+
+    def highlightMultilineComments(self, text):
+        start = QRegExp(r'"""')
+        end = QRegExp(r'"""')
+        self.highlightMultiline(text, start, end, self.formats['comment'])
+
+        start = QRegExp(r"'''")
+        end = QRegExp(r"'''")
+        self.highlightMultiline(text, start, end, self.formats['comment'])
+
+    def highlightMultiline(self, text, start, end, format):
+        if self.previousBlockState() == 1:
+            startIndex = 0
+            add = 0
+        else:
+            startIndex = start.indexIn(text)
+            add = start.matchedLength()
+
+        while startIndex >= 0:
+            endIndex = end.indexIn(text, startIndex + add)
+            if endIndex == -1:
+                self.setCurrentBlockState(1)
+                commentLength = len(text) - startIndex
+            else:
+                commentLength = endIndex - startIndex + end.matchedLength()
+
+            self.setFormat(startIndex, commentLength, format)
+            startIndex = start.indexIn(text, startIndex + commentLength)
+
+    def rehighlight(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QSyntaxHighlighter.rehighlight(self)
+        QApplication.restoreOverrideCursor()
+
+    def setDocument(self, document):
+        super().setDocument(document)
+        self.rehighlight()
 
 class CppHighlighter(SyntaxHighlighter):
     def __init__(self, light=True, parent=None):
@@ -447,90 +521,221 @@ class CppHighlighter(SyntaxHighlighter):
         keyword_format.setForeground(QColor("#FFD700" if light else "#FFA500"))  # 更鲜艳的颜色
         keyword_format.setFontWeight(QFont.Bold)
         keywords = [
-            "class", "const", "delete", "double", "dynamic_cast", "enum",
-            "explicit", "export", "false", "float", "for", "friend",
-            "goto", "if", "inline", "int", "long", "namespace", "new",
-            "operator", "private", "protected", "public", "return",
-            "short", "signed", "sizeof", "static", "struct", "switch",
-            "template", "this", "throw", "true", "try", "typedef",
-            "typeid", "unsigned", "using", "virtual", "void", "volatile",
-            "wchar_t", "constexpr", "noexcept", "override"  # 新增 'override'
+            # C关键词
+            "auto", "break", "case", "char", "const", "continue", "default", "do",
+            "double", "else", "enum", "extern", "float", "for", "goto", "if",
+            "int", "long", "register", "return", "short", "signed", "sizeof", "static",
+            "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
+            
+            # C++额外关键词
+            "asm", "bool", "catch", "class", "const_cast", "delete", "dynamic_cast",
+            "explicit", "export", "false", "friend", "inline", "mutable", "namespace",
+            "new", "operator", "private", "protected", "public", "reinterpret_cast",
+            "static_cast", "template", "this", "throw", "true", "try", "typeid",
+            "typename", "using", "virtual", "wchar_t",
+            
+            "alignas", "alignof", "char16_t", "char32_t", "constexpr", "decltype",
+            "noexcept", "nullptr", "static_assert", "thread_local",
+            
+            "abstract", "as", "base", "byte", "checked", "decimal", "delegate", "event",
+            "finally", "fixed", "foreach", "in", "interface", "internal", "is", "lock",
+            "object", "out", "override", "params", "readonly", "ref", "sbyte", "sealed",
+            "stackalloc", "string", "uint", "ulong", "unchecked", "unsafe", "ushort", "var"
         ]
         self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
                                  for keyword in keywords]
 
         quotation_format = QTextCharFormat()
-        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22"))  # 更鲜艳的颜色
-        self.quotation_pattern = (QRegExp(r"\".*\"|'.*'"), quotation_format)  # 支持单引号字符串
+        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22")) 
+        self.quotation_pattern = (QRegExp(r"\".*?\"|'.'"), quotation_format) 
 
         function_format = QTextCharFormat()
         function_format.setFontItalic(True)
-        function_format.setForeground(QColor("#00BFFF" if light else "#1E90FF"))  # 更鲜艳的颜色
-        self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
+        function_format.setForeground(QColor("#00BFFF" if light else "#1E90FF"))  
+        self.function_pattern = (QRegExp(r"\b[A-Za-z_][A-Za-z0-9_]*(?=\s*\()"), function_format)
 
         comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))  # 更鲜艳的颜色
-        self.comment_pattern = (QRegExp(r"//.*|/\*.*\*/"), comment_format)  # 支持多行注释
+        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))  
+        self.comment_pattern = (QRegExp(r"//[^\n]*|/\*[\s\S]*?\*/"), comment_format)  
+
+        preprocessor_format = QTextCharFormat()
+        preprocessor_format.setForeground(QColor("#8B008B" if light else "#9370DB")) 
+        self.preprocessor_pattern = (QRegExp(r"^\s*#\s*\w+"), preprocessor_format)
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            expression = QRegExp(pattern)
+            index = expression.indexIn(text)
+            while index >= 0:
+                length = expression.matchedLength()
+                self.setFormat(index, length, format)
+                index = expression.indexIn(text, index + length)
+
+        self.highlightPattern(text, self.quotation_pattern)
+        self.highlightPattern(text, self.function_pattern)
+        self.highlightPattern(text, self.comment_pattern)
+        self.highlightPattern(text, self.preprocessor_pattern)
+
+    def highlightPattern(self, text, pattern):
+        expression, format = pattern
+        index = expression.indexIn(text)
+        while index >= 0:
+            length = expression.matchedLength()
+            self.setFormat(index, length, format)
+            index = expression.indexIn(text, index + length)
 
 class JavaHighlighter(SyntaxHighlighter):
     def __init__(self, light=True, parent=None):
         super().__init__(parent)
-        self.l = light
+        self.light = light
         
         keyword_format = QTextCharFormat()
-        keyword_format.setForeground(QColor("#FFD700" if light else "#FFA500"))  # 更鲜艳的颜色
+        keyword_format.setForeground(QColor("#FFD700" if light else "#FFA500"))
         keyword_format.setFontWeight(QFont.Bold)
         keywords = [
             "abstract", "assert", "boolean", "break", "byte", "case",
             "catch", "char", "class", "const", "continue", "default",
             "do", "double", "else", "enum", "extends", "final",
-            "finally", "float", "for", "goto", "if", "implements",
+            "finally", "float", "for", "if", "implements",
             "import", "instanceof", "int", "interface", "long",
-            "native", "new", "null", "package", "private", "protected",
+            "native", "new", "package", "private", "protected",
             "public", "return", "short", "static", "strictfp",
             "super", "switch", "synchronized", "this", "throw", "throws",
             "transient", "try", "void", "volatile", "while",
-            "synchronized", "transient", "volatile", "enum"  # 重复关键词已删除
+            "true", "false", "null", "var", "yield", "record", "sealed", "permits"
         ]
         self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
                                  for keyword in keywords]
 
         quotation_format = QTextCharFormat()
-        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22"))  # 更鲜艳的颜色
-        self.quotation_pattern = (QRegExp(r"\".*\"|'.*'"), quotation_format)  # 支持单引号字符串
+        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22"))
+        self.quotation_pattern = (QRegExp(r'"(?:\\.|[^"\\])*"'), quotation_format)
 
         function_format = QTextCharFormat()
         function_format.setFontItalic(True)
-        function_format.setForeground(QColor("#00BFFF" if light else "#1E90FF"))  # 更鲜艳的颜色
-        self.function_pattern = (QRegExp(r"\b[A-Za-z0-9_]+(?=\()"), function_format)
+        function_format.setForeground(QColor("#00BFFF" if light else "#1E90FF"))
+        self.function_pattern = (QRegExp(r"\b[A-Za-z_][A-Za-z0-9_]*(?=\s*\()"), function_format)
 
         comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))  # 更鲜艳的颜色
-        self.comment_pattern = (QRegExp(r"//.*|/\*.*\*/"), comment_format)  # 支持多行注释
+        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))
+        self.single_line_comment_pattern = (QRegExp(r"//[^\n]*"), comment_format)
+        self.multi_line_comment_pattern = (QRegExp(r"/\*.*?\*/", QRegExp.DotAll), comment_format)
 
-class MarkdownHighlighter(SyntaxHighlighter):
+        annotation_format = QTextCharFormat()
+        annotation_format.setForeground(QColor("#8B008B" if light else "#9370DB"))
+        self.annotation_pattern = (QRegExp(r"@\w+"), annotation_format)
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            self.highlightPattern(text, pattern, format)
+
+        self.highlightPattern(text, *self.quotation_pattern)
+        self.highlightPattern(text, *self.function_pattern)
+        self.highlightPattern(text, *self.single_line_comment_pattern)
+        self.highlightPattern(text, *self.multi_line_comment_pattern)
+        self.highlightPattern(text, *self.annotation_pattern)
+
+    def highlightPattern(self, text, pattern, format):
+        expression = QRegExp(pattern)
+        index = expression.indexIn(text)
+        while index >= 0:
+            length = expression.matchedLength()
+            self.setFormat(index, length, format)
+            index = expression.indexIn(text, index + length)
+
+
+class MarkdownHighlighter(QSyntaxHighlighter):
     def __init__(self, light=True, parent=None):
         super().__init__(parent)
-        self.l = light
+        self.light = light
+        # 格式
+        self.basic_formatting()
+        # 标题
+        self.header_format = QTextCharFormat()
+        self.header_format.setFontWeight(QFont.Bold)
+        self.header_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
         
+        self.emphasis_format = QTextCharFormat()
+        self.emphasis_format.setFontItalic(True)
+        self.emphasis_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        
+        self.strong_format = QTextCharFormat()
+        self.strong_format.setFontWeight(QFont.Bold)
+        self.strong_format.setForeground(QColor("#800000" if light else "#CD5C5C"))
+
+        self.link_format = QTextCharFormat()
+        self.link_format.setForeground(QColor("#1E90FF" if light else "#87CEFA"))
+        self.link_format.setFontUnderline(True)
+
+        self.code_block_format = QTextCharFormat()
+        self.code_block_format.setForeground(QColor("#808080" if light else "#A9A9A9"))
+        self.code_block_format.setBackground(QColor("#F0F0F0" if light else "#2F4F4F"))
+
+        self.list_format = QTextCharFormat()
+        self.list_format.setForeground(QColor("#FF8C00" if light else "#FFA500"))
+
+    def basic_formatting(self):
         keyword_format = QTextCharFormat()
-        keyword_format.setForeground(QColor("#FFD700" if light else "#FFA500"))  # 更鲜艳的颜色
+        keyword_format.setForeground(QColor("#FFD700" if self.light else "#FFA500"))
         keyword_format.setFontWeight(QFont.Bold)
         keywords = [
             "#", "##", "###", "####", "#####", "######", "*", "_", ">", "-",
             "1.", "2.", "3.", "4.", "5.", "6.", "```", "[", "]", "(", ")",
-            "!", "!!", "!!!", "!!!!", "!!!!!", "!!!!!!", "~~"  # 新增 '~~'
+            "!", "!!", "!!!", "!!!!", "!!!!!", "!!!!!!", "~~"
         ]
         self.keyword_patterns = [(QRegExp(re.escape(keyword)), keyword_format)
                                  for keyword in keywords]
 
-        quotation_format = QTextCharFormat()
-        quotation_format.setForeground(QColor("#32CD32" if light else "#228B22"))  # 更鲜艳的颜色
-        self.quotation_pattern = (QRegExp(r"`.*`"), quotation_format)
+        self.quotation_format = QTextCharFormat()
+        self.quotation_format.setForeground(QColor("#32CD32" if self.light else "#228B22"))
+        self.quotation_pattern = QRegExp(r"`.*`")
 
-        comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor("#FF4500" if light else "#B22222"))  # 更鲜艳的颜色
-        self.comment_pattern = (QRegExp(r"<!--.*-->"), comment_format)
+        self.comment_format = QTextCharFormat()
+        self.comment_format.setForeground(QColor("#FF4500" if self.light else "#B22222"))
+        self.comment_pattern = QRegExp(r"<!--.*-->")
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            self.highlight_pattern(text, pattern, format)
+        self.highlight_pattern(text, self.quotation_pattern, self.quotation_format)
+        self.highlight_pattern(text, self.comment_pattern, self.comment_format)
+        self.highlight_headers(text)
+        self.highlight_emphasis_and_strong(text)
+        self.highlight_links(text)
+        self.highlight_code_blocks(text)
+        self.highlight_lists(text)
+
+    def highlight_pattern(self, text, pattern, format):
+        expression = QRegExp(pattern)
+        index = expression.indexIn(text)
+        while index >= 0:
+            length = expression.matchedLength()
+            self.setFormat(index, length, format)
+            index = expression.indexIn(text, index + length)
+
+    def highlight_headers(self, text):
+        expression = QRegExp(r"^#{1,6}\s.*$")
+        self.highlight_pattern(text, expression, self.header_format)
+
+    def highlight_emphasis_and_strong(self, text):
+        self.highlight_pattern(text, r"\*[^\*]+\*", self.emphasis_format)
+        self.highlight_pattern(text, r"_[^_]+_", self.emphasis_format)
+        self.highlight_pattern(text, r"\*\*[^\*]+\*\*", self.strong_format)
+        self.highlight_pattern(text, r"__[^_]+__", self.strong_format)
+
+    def highlight_links(self, text):
+        expression = QRegExp(r"\[([^\]]+)\]\(([^\)]+)\)")
+        self.highlight_pattern(text, expression, self.link_format)
+
+    def highlight_code_blocks(self, text):
+        expression = QRegExp(r"```[\s\S]*?```")
+        self.highlight_pattern(text, expression, self.code_block_format)
+
+    def highlight_lists(self, text):
+        expression = QRegExp(r"^\s*[\*\+\-]\s")
+        self.highlight_pattern(text, expression, self.list_format)
+        expression = QRegExp(r"^\s*\d+\.\s")
+        self.highlight_pattern(text, expression, self.list_format)
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QStackedWidget, QPushButton, QLabel, QGridLayout, QWidget
 from PyQt5.QtCore import Qt
@@ -845,11 +1050,11 @@ class TsukiReader(QMainWindow):
         super().__init__()
         QMetaType.type("QTextCursor")
         self.before = ''
-        self.current_version = '1.5.5' 
-        self.real_version = '1.5.5'
-        self.update_Date = '2024/10/06'
+        self.current_version = '1.5.6' 
+        self.real_version = '1.5.6'
+        self.update_Date = '2024/10/07'
         self.version_td = 'Release'
-        self.version_gj = 'b-v155B-241006R'
+        self.version_gj = 'b-v156B-241007R'
         self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
         
 
@@ -874,25 +1079,19 @@ class TsukiReader(QMainWindow):
         self.tabWidget.setTabsClosable(True)
         self.tabWidget.tabCloseRequested.connect(self.closeTab)
         
-
-        self.loadScrollbarStyle()
         self.setTabCloseButtonStyle()
         self.tabWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tabWidget.customContextMenuRequested.connect(self.showTabContextMenu)
 
-        # 添加 "+" 按钮到标签栏
         self.add_tab_button = QPushButton()
         self.add_tab_button.setIcon(QIcon('./tsuki/assets/GUI/resources/tips.png'))
         self.add_tab_button.setFixedSize(24, 24)
         self.add_tab_button.clicked.connect(self.newFile)
-
-        # 将 "+" 按钮添加到标签栏的右侧
         self.tabWidget.setCornerWidget(self.add_tab_button, Qt.TopRightCorner)
+        self.loadAllStyles()
 
-        self.setTabBarStyle()
-
-    def setTabBarStyle(self):
-        style = """
+    def loadAllStyles(self):
+        tab_bar_style = """
         QTabBar::tab {
             background-color: #f0f0f0;
             color: #333333;
@@ -923,7 +1122,18 @@ class TsukiReader(QMainWindow):
             background-color: #e0e0e0;
         }
         """
-        self.setStyleSheet(style)
+
+        scrollbar_style = ""
+        qss_file_path = './tsuki/assets/theme/Main_Scrollbar_Style.qss'
+        try:
+            with open(qss_file_path, 'r', encoding='utf-8') as file:
+                scrollbar_style = file.read()
+        except Exception as e:
+            logging.error(f"加载滚动条样式失败: {e}")
+            QMessageBox.warning(self, "样式加载错误", f"加载滚动条样式失败: {e}")
+
+        combined_style = tab_bar_style + scrollbar_style
+        self.setStyleSheet(combined_style)
 
 
     def showTabContextMenu(self, pos):
@@ -1865,7 +2075,7 @@ class TsukiReader(QMainWindow):
             font = QFont(font_name)
             logging.info(f"[Log/INFO] Font name: {font_name}, path: {font_path}")
         except Exception as e:
-            logging.error(f"[Log/ERROR] Error reading font config: {e}")
+            logging.debug(f"[Log/ERROR] Error reading font config: {e} \n Using default font: Microsoft YaHei ")
             font = QFont("Microsoft YaHei")
             logging.info(f"[Log/INFO] Using default font due to error: Microsoft YaHei")
 
@@ -1977,6 +2187,9 @@ class TsukiReader(QMainWindow):
         self.tabWidget.addTab(textEdit, tab_name)
         self.updateTabIcon(new_tab_index)
         
+        tab_font = QFont("Microsoft YaHei", 9)
+        self.tabWidget.tabBar().setFont(tab_font)
+
         textEdit.setLineWrapMode(QPlainTextEdit.NoWrap)
         textEdit.setTabStopDistance(4 * self.fontMetrics().averageCharWidth())
         logging.info(f"[Log/INFO] New File: {tab_name}, Encoding: {file_encoding}")
@@ -1990,7 +2203,6 @@ class TsukiReader(QMainWindow):
 
         # 更新状态栏
         self.statusBar().showMessage(f'TsukiTab✔: 新建标签页 "{tab_name}" 成功')
-        
 
 
     def apply_background_settings(self, widget):
@@ -2202,31 +2414,134 @@ class TsukiReader(QMainWindow):
             response = requests.get(version_url, timeout=60)
             if response.status_code == 200:
                 content = response.text.strip().split('\n')
+                latest_version = None
                 update_link = None
                 
                 for line in content:
-                    if line.lower().startswith('update_link:'):
+                    if line.lower().startswith('version:'):
+                        latest_version = line.split(':', 1)[1].strip()
+                    elif line.lower().startswith('update_link:'):
                         update_link = line.split(':', 1)[1].strip()
+                    
+                    if latest_version and update_link:
                         break
                 
-                if update_link:
-                    reply = QMessageBox.question(self, 'TsukiNotes 检测更新 | 成功 | Successful',
-                                                f'🔰✔叮！\nTsukiNotes有新的更新包可用。是否下载并安装？',
-                                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！发现新的更新包')
+                if latest_version and update_link:
+                    if latest_version > self.current_version:
+                        msgBox = QMessageBox()
+                        msgBox.setWindowTitle('TsukiNotes 检测更新 | 成功 | Successful')
+                        msgBox.setText(f'🔰✔叮！\nTsukiNotes有新的更新包可用。\n当前版本：{self.current_version}\n最新版本：{latest_version}\n是否下载并安装？')
+                        msgBox.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                        msgBox.setDefaultButton(QMessageBox.No)
+                        
+                        msgBox.setStyleSheet("""
+                        QMessageBox {
+                            background-color: #f0f8ff;
+                            border: 2px solid #87cefa;
+                            border-radius: 10px;
+                     
+                        }
+                        QPushButton {
+                            background-color: #1e90ff;
+                            color: white;
+                            border: none;
+                            padding: 5px 15px;
+                            margin: 5px;
+                            border-radius: 5px;
+                            font-size: 13px;
+                            font-family: 'Microsoft YaHei', sans-serif;   
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #4169e1;
+                        }
+                        QPushButton:pressed {
+                            background-color: #0000cd;
+                        }
+                        """)
+                        
+                        reply = msgBox.exec_()
+                        self.statusBar().showMessage(f'TsukiUpdate✔: 检测成功！发现新的更新包 {latest_version} | URL: {update_link}')
 
-                    if reply == QMessageBox.Yes:
-                        self.download_and_install_update(update_link, "latest")
+                        if reply == QMessageBox.Yes:
+                            self.download_and_install_update(update_link, latest_version)
+                    else:
+                        infoBox = QMessageBox()
+                        infoBox.setWindowTitle('TsukiNotes 检测更新 | 成功 | 🔰')
+                        infoBox.setText(f'您的版本已是最新。\n当前版本：{self.current_version}')
+                        infoBox.setStyleSheet("""
+                        QMessageBox {
+                            background-color: #f0f8ff;
+                            border: 2px solid #87cefa;
+                            border-radius: 10px;
+                        }
+                        QMessageBox QLabel {
+                            font-size: 14px;
+                            font-weight: bold;
+                            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 #FFC0CB, stop:0.25 #FFFFFF,
+                                stop:0.5 #E6F3FF, stop:0.75 #40E0D0,
+                                stop:1 #FFFFFF);
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                            font-family: 'Microsoft YaHei', sans-serif;   
+                        }
+                        QPushButton {
+                            background-color: #1e90ff;
+                            color: white;
+                            border: none;
+                            padding: 5px 15px;
+                            margin: 5px;
+                            border-radius: 5px;
+                            font-size: 13px;
+                            font-family: 'Microsoft YaHei', sans-serif;   
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #4169e1;
+                        }
+                        QPushButton:pressed {
+                            background-color: #0000cd;
+                        }
+                        """)
+                        infoBox.exec_()
+                        self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！当前已是最新版本')
                 else:
-                    QMessageBox.information(self, 'TsukiNotes 检测更新 | 成功 | 🔰',
-                                            f'当前没有可用的更新包。')
-                    self.statusBar().showMessage(f'TsukiUpdate: 检测成功✔！没有发现新的更新包')
+                    raise ValueError("无法从服务器获取版本信息")
             else:
                 raise ConnectionError("无法连接到服务器")
 
         except Exception as e:
-            QMessageBox.critical(self, '检测更新|错误',
-                                f'出错啦！ \nOccurred:\n{str(e)}\n 您可以尝试使用加速器加速GitHub\n 或者尝试手动更新吧')
+            errorBox = QMessageBox()
+            errorBox.setWindowTitle('检测更新|错误')
+            errorBox.setText(f'出错啦！ \nOccurred:\n{str(e)}\n 您可以尝试使用加速器加速GitHub\n 或者尝试手动更新吧')
+            errorBox.setIcon(QMessageBox.Critical)
+            
+            errorBox.setStyleSheet("""
+            QMessageBox {
+                background-color: #ffebee;
+                border: 2px solid #f44336;
+                border-radius: 10px;
+            }
+            QMessageBox QLabel {
+                color: #b71c1c;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                padding: 5px 15px;
+                margin: 5px;
+                border-radius: 5px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+            """)
+            
+            errorBox.exec_()
             logger.error(f"[Log/ERROR]Check For Updates Error: {e}")
             self.statusBar().showMessage(f'TsukiUpdate❌: 检测失败！')
 
@@ -2234,6 +2549,42 @@ class TsukiReader(QMainWindow):
         download_dialog = QProgressDialog("下载更新中...", "取消", 0, 100, self)
         download_dialog.setWindowTitle("下载更新")
         download_dialog.setWindowModality(Qt.WindowModal)
+        
+        # 直接设置下载对话框的QSS样式
+        download_dialog.setStyleSheet("""
+        QProgressDialog {
+            background-color: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 10px;
+        }
+        QProgressDialog QLabel {
+            color: #1b5e20;
+            font-size: 14px;
+        }
+        QProgressBar {
+            border: 2px solid #4caf50;
+            border-radius: 5px;
+            text-align: center;
+        }
+        QProgressBar::chunk {
+            background-color: #4caf50;
+            width: 10px;
+            margin: 0.5px;
+        }
+        QPushButton {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        QPushButton:hover {
+            background-color: #45a049;
+        }
+        """)
+        
         download_dialog.show()
 
         try:
@@ -2251,23 +2602,31 @@ class TsukiReader(QMainWindow):
                     for data in response.iter_content(chunk_size=4096):
                         dl += len(data)
                         f.write(data)
-                        done = int(50 * dl / total_length)
+                        done = int(100 * dl / total_length)
                         download_dialog.setValue(done)
                         QApplication.processEvents()  # 更新UI
                         if download_dialog.wasCanceled():
                             QMessageBox.warning(self, '下载更新', '下载已取消')
                             return
 
-                with zipfile.ZipFile(update_filename, 'r') as zip_ref:
-                    zip_ref.extractall('.')
-                os.remove(update_filename)
-                download_dialog.setValue(100)
-                QMessageBox.information(self, '更新完成', f'更新已下载并解压，将重启应用。版本号: {latest_version}')
-                subprocess.run(["python", "TsukiNotes.py"])  # 重启应用
-                sys.exit()
+                download_dialog.close()
+                
+                try:
+                    with zipfile.ZipFile(update_filename, 'r') as zip_ref:
+                        zip_ref.extractall('.')
+                    os.remove(update_filename)
+                    QMessageBox.information(self, '更新完成', f'更新已下载并解压，将重启应用。版本号: {latest_version}')
+                    subprocess.run(["python", "TsukiNotes.py"])  # 重启应用
+                    sys.exit()
+                except zipfile.BadZipFile:
+                    QMessageBox.critical(self, '更新失败', '下载的文件不是有效的zip文件')
+                    logger.error("[Log/ERROR]Download Update Error: File is not a zip file")
+                except Exception as e:
+                    QMessageBox.critical(self, '更新失败', f'解压或安装更新失败：{str(e)}')
+                    logger.error(f"[Log/ERROR]Install Update Error: {e}")
         except Exception as e:
             download_dialog.close()
-            QMessageBox.critical(self, '下载更新失败', f'下载或安装更新失败：{str(e)}')
+            QMessageBox.critical(self, '下载更新失败', f'下载更新失败：{str(e)}')
             logger.error(f"[Log/ERROR]Download Update Error: {e}")
     def url_msg(self):
         versiongj = self.version_gj
@@ -2400,40 +2759,73 @@ class TsukiReader(QMainWindow):
         versiontime = self.version_gj  
         version_td = self.version_td
         update_time = self.update_Date
-        online_update_text = self.getOnlineUpdateText()
+        
+        try:
+            online_update_text = self.getOnlineUpdateText()
+        except Exception as e:
+            logger.error(f"[Log/ERROR]获取在线更新日志失败: {e}")
+            online_update_text = "无法获取在线更新日志，请检查网络连接或稍后再试。"
 
         update_text = (
             "<html>"
-            "<h2 style='text-align: left;'>| TsukiNotes Online Update Information🌐</h2>"
-            f"<p style='text-align: center;'>Version:{version} {version_td}[{update_time}]</p>"
+            "<h2 style='color: #4a4a4a; font-family: \"Microsoft YaHei\", sans-serif; text-align: left; margin-bottom: 20px;'>| TsukiNotes 在线更新信息🌐</h2>"
+            f"<p style='color: #666; font-size: 16px; text-align: center; margin-bottom: 15px;'>版本: {version} {version_td} [{update_time}]</p>"
             "</html>"
-            f"======================================================================================<br>"
-            f"{online_update_text}<br>"
-            f"======================================================================================<br>"
-            f"<p style='text-align: center;'>[+代表细节优化|*代表重���改动]</p>"
-            f"<p style='text-align: center;'> || {version_td} ||</p>"
-            f"<p style='text-align: center;'>[内部版本号:{versiontime}]</p>"
+            f"<hr style='border: 0; height: 1px; background: #d4d4d4; margin: 20px 0;'>"
+            f"<div style='background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;'>{online_update_text}</div>"
+            f"<hr style='border: 0; height: 1px; background: #d4d4d4; margin: 20px 0;'>"
+            f"<p style='color: #888; font-size: 14px; text-align: center;'>[+代表细节优化 | *代表重要改动]</p>"
+            f"<p style='color: #4a4a4a; font-size: 18px; font-weight: bold; text-align: center; margin-top: 10px;'> || {version_td} ||</p>"
+            f"<p style='color: #888; font-size: 14px; text-align: center;'>[内部版本号: {versiontime}]</p>"
         )
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"TsukiNotes[{version}]在线更新日志 -Ver{version}{version_td}")
-        dialog.resize(600, 300)
+        dialog.resize(600, 400)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #ffffff;
+                border: 1px solid #e0e0e0;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: #333333;
+                font-family: "Microsoft YaHei", sans-serif;
+            }
+            QPushButton {
+                background-color: #4a86e8;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #3a76d8;
+            }
+            QPushButton:pressed {
+                background-color: #2a66c8;
+            }
+        """)
 
         layout = QVBoxLayout(dialog)
         label = QLabel()
         label.setTextFormat(Qt.RichText)
         label.setText(update_text)
         layout.addWidget(label)
-        label_font = QFont('Microsoft YaHei UI')
+        label_font = QFont('Microsoft YaHei UI', 10)
         label.setFont(label_font)
         label.setAlignment(Qt.AlignLeft)
+        label.setWordWrap(True)
+        
         button_box = QDialogButtonBox(QDialogButtonBox.Ok)
         button_box.accepted.connect(dialog.accept)
         layout.addWidget(button_box)
+        
         dialog.exec_()
 
         self.statusBar().showMessage('TsukiBack✔: 您查看了更新日志')
-        logger.info(f"[Log/INFO]Open Update Information Succeed")
+        logger.info(f"[Log/INFO]打开更新信息成功")
 
 
 
@@ -2475,6 +2867,7 @@ class TsukiReader(QMainWindow):
             else:
                 self.statusBar().showMessage('TsukiTab: 标签名未更改')
                 logger.info(f"[Log/INFO] Tab name unchanged: {current_name}")
+
     def closeTab(self, index):
         self.tabWidget.removeTab(index)
 
@@ -2513,8 +2906,120 @@ class TsukiReader(QMainWindow):
         else:
             self.text_modified = True
         if self.text_modified:
-            reply = QMessageBox.question(self, '退出提示🔰', '文本可能被修改❓，是否保存一小下❓',
-                                         QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel, QMessageBox.Cancel)
+            msgBox = QMessageBox(self)
+            msgBox.setText('文本可能被修改，是否保存？')
+            msgBox.setStandardButtons(QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            msgBox.setDefaultButton(QMessageBox.Cancel)
+            
+            msgBox.setStyleSheet("""
+            QMessageBox {
+                background-color: #f8f9fa;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: #495057;
+                font-size: 15px;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                margin: 6px;
+                border-radius: 4px;
+                font-size: 14px;
+                font-family: 'Microsoft YaHei', sans-serif;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0069d9;
+            }
+            QPushButton:pressed {
+                background-color: #0056b3;
+            }
+            QPushButton#Yes {
+                background-color: #28a745;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QPushButton#Yes:hover {
+                background-color: #218838;
+            }
+            QPushButton#Yes:pressed {
+                background-color: #1e7e34;
+            }
+            QPushButton#No {
+                background-color: #dc3545;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QPushButton#No:hover {
+                background-color: #c82333;
+            }
+            QPushButton#No:pressed {
+                background-color: #bd2130;
+            }
+            QPushButton#Cancel {
+                background-color: #6c757d;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QPushButton#Cancel:hover {
+                background-color: #5a6268;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QPushButton#Cancel:pressed {
+                background-color: #545b62;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            """)
+            
+            msgBox.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+            
+            yes_button = msgBox.button(QMessageBox.Yes)
+            no_button = msgBox.button(QMessageBox.No)
+            cancel_button = msgBox.button(QMessageBox.Cancel)
+            if yes_button:
+                yes_button.setObjectName("Yes")
+                yes_button.setText("保存")
+                yes_button.setStyleSheet("""
+                QPushButton#Yes {
+                    background-color: #28a745;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }
+                QPushButton#Yes:hover {
+                    background-color: #218838;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }""")
+            if no_button:
+                no_button.setObjectName("No")
+                no_button.setText("不保存退出")
+                no_button.setStyleSheet("""
+                QPushButton#No {
+                    background-color: #dc3545;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }
+                QPushButton#No:hover {
+                    background-color: #c82333;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }""")
+                
+            if cancel_button:
+                cancel_button.setObjectName("Cancel")
+                cancel_button.setText("取消")
+                cancel_button.setStyleSheet("""
+                QPushButton#Cancel {
+                    background-color: #6c757d;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }
+                QPushButton#Cancel:hover {
+                    background-color: #5a6268;
+                    font-family: 'Microsoft YaHei', sans-serif;
+                }
+                                            """)
+                                            
+            
+            reply = msgBox.exec_()
+            
             if reply == QMessageBox.Yes:
                 n = self.performSave()
                 if n == 0:

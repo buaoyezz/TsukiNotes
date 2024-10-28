@@ -58,9 +58,11 @@ pyinstaller --add-data "tsuki/assets/kernel/cython_utils.cp312-win_amd64.pyd;tsu
 pyinstaller TsukiNotes.py -i logo.ico -w
 ```
 >> 对于安装向导的编译同上 GUI 也基于`PyQt5`
-5. 值得注意的 `-w` 参数可以选择性添加1，`xxx`请改为实际名称
+5. 值得注意的 `-w` 参数可以选择性添加，`xxx`请改为实际名称
 6. 构建完成后将`.tsuki`可能被您改动，需要重新配置
-7. 代码写的有点史，见谅
+7. build.bat的前提是你没有修改过原本文件的路径，若你改过，请在bat内也修改
+8. 代码写的有点史，见谅
+9. 安装器的源码按需修改[在线安装器]
 
 > ## **END**
 

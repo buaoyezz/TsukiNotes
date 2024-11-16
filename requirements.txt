@@ -1,0 +1,14 @@
+certifi==2024.8.30
+chardet==5.2.0
+colorlog==6.9.0
+html2text==2024.2.26
+markdown2==2.5.1
+packaging==24.2
+Pillow==11.0.0
+ping3==4.0.8
+PyQt5==5.15.11
+PyQt5_sip==12.15.0
+Requests==2.32.3
+setuptools==75.5.0
+sympy==1.13.3
+urllib3==2.2.3

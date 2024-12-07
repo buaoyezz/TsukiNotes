@@ -1,4 +1,4 @@
-# **TsukiNotes - Record your inspiration anytime, anywhere**
+# **TsukiNotes **<br>** Record your inspiration anytime, anywhere**
 
 **Select language before starting: [Chinese Simplified ](README_CN.md) | [English](README.md)**
 ## About TsukiNotes

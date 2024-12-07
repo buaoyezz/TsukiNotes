@@ -8,6 +8,8 @@ import html2text
 from html2text import html2text 
 import ipaddress
 import shutil
+import builtins
+import keyword
 import subprocess
 import logging
 import os
@@ -28,7 +30,7 @@ from packaging import version
 import ping3
 from PyQt5.QtCore import (
     QSettings, QThread, Qt, QEvent, QFile, QRegExp, QTimer, pyqtSignal, 
-    QPoint, QObject, QMetaType, QMetaObject, QLocale, QUrl
+    QPoint, QObject, QMetaType, QMetaObject, QLocale, QUrl,QSize
 )
 from PyQt5.QtGui import (
     QFont, QIcon, QTextCharFormat, QColor, QTextCursor, QKeySequence, 
@@ -75,129 +77,339 @@ class ColoredFormatter(colorlog.ColoredFormatter):
         )
         return formatter.format(record)
 
-if os.path.exists('./tsuki/assets/log/'):
-    tips_log_dir = './tsuki/assets/log/'
-    os.makedirs(tips_log_dir, exist_ok=True)
-    def create_and_write_file(directory, filename, content):
-        os.makedirs(directory, exist_ok=True)
-        file_path = os.path.join(directory, filename)
-
-        with open(file_path, 'w') as file:
-            file.write(content)
-    directory = './tsuki/assets/log/'
-    filename = 'Log_ZZBuAoYe_Readme.txt'
-    content = ('Dear User,\n\nThank you for using this software.\n\nYou are currently looking at the Log folder.\n\nPlease note the following:\n1. Logs are usually stored in the temp folder.\n2. The log files have a .log extension.\n3. Log file names follow this format: TsukiNotes_Log_{timestamp}.log, where {timestamp} is in the format datetime.now().strftime('').\n4. This text file is not pre-existing but is created automatically!\n5. Thanks for using our software.')
-
-    create_and_write_file(directory, filename, content)
-import tempfile
+# 首先创建一个基础的logger
+logger = logging.getLogger(__name__)
 
 def setup_logging():
-    log_dir = tempfile.gettempdir()  # 使用系统临时目录
-    log_dir = os.path.join(log_dir, 'tsuki', 'assets', 'log', 'temp')
-    if not os.path.exists(log_dir):
+    # 使用系统临时目录作为基础目录
+    log_dir = os.path.join(tempfile.gettempdir(), 'tsuki', 'assets', 'log', 'temp')
+    
+    # 确保日志目录存在
+    try:
         os.makedirs(log_dir, exist_ok=True)
+        print(f"Created log directory: {log_dir}")  # 使用print替代logger
+    except Exception as e:
+        print(f"Failed to create log directory: {e}")  # 使用print替代logger
+        # 如果创建失败,使用系统临时目录
+        log_dir = tempfile.gettempdir()
 
+    # 创建日志处理器
     stream_handler = logging.StreamHandler()
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_file_path = os.path.join(log_dir, f'TsukiNotes_Log_{timestamp}.log')
     
-    def detect_encoding(file_path):
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-            result = chardet.detect(raw_data)
-            return result['encoding']
-
     try:
         file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
     except Exception as e:
-        logging.error(f"文件处理错误: {e}")
-        file_handler = logging.FileHandler(log_file_path) 
+        print(f"文件处理错误: {e}")  # 
+        # 如果创建文件处理器失败,尝试使用系统默认编码
+        file_handler = logging.FileHandler(log_file_path)
 
+    # 设置格式化器
     formatter = ColoredFormatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         log_colors=LOG_COLORS
     )
+    
     stream_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(stream_handler)
-    logger.addHandler(file_handler)
+    
+    # 配置根日志记录器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
 
 setup_logging()
-logger = logging.getLogger(__name__)
 
-setup_logging()
+# setup logger
 logger = logging.getLogger(__name__)
 
 class QTextEditHandler(logging.Handler):
-    COLOR_MAP = {
-        'DEBUG': '<font color="purple">',
-        'INFO': '<font color="green">',
-        'WARNING': '<font color="orange">',
-        'ERROR': '<font color="red">',
-        'CRITICAL': '<font color="darkred">',
-    }
-
-    def __init__(self, text_edit, counters):
+    def __init__(self, text_edit, counters, original_logs):
         super().__init__()
         self.text_edit = text_edit
         self.counters = counters
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            color = self.COLOR_MAP.get(record.levelname, '<font color="black">')
-            html_msg = f'{color}{msg}</font>'
-            self.text_edit.append(html_msg)
-            levelname = record.levelname
-            if levelname in self.counters:
-                self.counters[levelname] += 1
-            else:
-                self.counters[levelname] = 1
-            self.update_statistics()
-        except Exception:
-            self.handleError(record)
+        self.original_logs = original_logs
+        
+        # 初始化所有日志级别的颜色
+        self.level_colors = {
+            'DEBUG': '#808080',    # 灰色
+            'INFO': '#008000',     # 绿色  
+            'WARNING': '#FFA500',  # 橙色
+            'ERROR': '#FF0000',    # 红色
+            'CRITICAL': '#FF0000'  # 红色
+        }
     
-    def update_statistics(self):
-        self.text_edit.parent().update_statistics()
+    def emit(self, record):
+        msg = self.format(record)
+        self.original_logs.append(msg)
+        self.format_and_append_log(msg)
+        
+        # 更新计数器
+        level = record.levelname  # 直接使用记录的级别名称
+        self.counters[level] = self.counters.get(level, 0) + 1
+        
+        # 通知 DebugWindow 更新统计信息
+        if hasattr(self.text_edit.parent(), 'update_statistics'):
+            self.text_edit.parent().update_statistics()
+
+    
+    def format_and_append_log(self, msg):
+        """格式化并添加日志消息到文本编辑器"""
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(cursor.End)
+        
+        # 设置默认格式
+        format = QTextCharFormat()
+        format.setForeground(QColor("#000000"))  # 默认黑色
+        
+        # 根据日志级别设置颜色
+        for level, color in self.level_colors.items():
+            if f' - {level} - ' in msg:
+                format.setForeground(QColor(color))
+                break
+        
+        cursor.insertText(msg + '\n', format)
+        
+        # 如果启用了自动滚动，滚动到底部
+        if hasattr(self.text_edit.parent(), 'auto_scroll') and self.text_edit.parent().auto_scroll:
+            scrollbar = self.text_edit.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
 
 class DebugWindow(QWidget):
     def __init__(self):
         super().__init__()
-        debug_version = '0.1.2'
+        # 初始化计数器
+        self.log_counters = {
+            'DEBUG': 0,
+            'INFO': 0, 
+            'WARNING': 0,
+            'ERROR': 0,
+            'CRITICAL': 0
+        }
+        debug_version = '1.0.0'
         self.setWindowTitle(self.tr(f"TsukiNotes -Debug Ver {debug_version}"))
         self.setGeometry(100, 100, 800, 600)
         self.setFont(QFont("Microsoft YaHei", 9))
         self.setWindowIcon(QIcon("./tsuki/assets/GUI/resources/GUI/terminal.png"))
         
-        self.log_counters = {'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'DEBUG': 0}
-
-        layout = QVBoxLayout()
+        self.auto_scroll = True # 自动滚动[default enable]
         
+        # 主布局
+        main_layout = QVBoxLayout()
+        
+        # 工具栏
+        toolbar = QToolBar()
+        toolbar.setStyleSheet("QToolBar{spacing:5px;}")
+        
+        # 添加日志级别过滤
+        self.level_combo = QComboBox()
+        self.level_combo.addItems(['ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR'])
+        self.level_combo.currentTextChanged.connect(self.filter_logs)
+        toolbar.addWidget(QLabel(self.tr("日志级别:")))
+        toolbar.addWidget(self.level_combo)
+        
+        # 添加搜索框
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(self.tr("搜索日志..."))
+        self.search_input.textChanged.connect(self.search_logs)
+        toolbar.addWidget(self.search_input)
+        
+        # 添加功能按钮
+        export_btn = QPushButton(self.tr("导出日志"))
+        export_btn.clicked.connect(self.export_logs)
+        toolbar.addWidget(export_btn)
+        
+        clear_btn = QPushButton(self.tr("清除日志"))
+        clear_btn.clicked.connect(self.clear_logs)
+        toolbar.addWidget(clear_btn)
+        
+        # 自动滚动开关
+        self.scroll_check = QCheckBox(self.tr("自动滚动"))
+        self.scroll_check.setChecked(True)
+        self.scroll_check.stateChanged.connect(self.toggle_auto_scroll)
+        toolbar.addWidget(self.scroll_check)
+        
+        # 主题切换
+        theme_btn = QPushButton(self.tr("切换主题"))
+        theme_btn.clicked.connect(self.toggle_theme)
+        toolbar.addWidget(theme_btn)
+        
+        main_layout.addWidget(toolbar)
+        
+        # 日志显示区域
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
-        layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(self.log_text_edit)
         
+        # 字体设置
+        font_layout = QHBoxLayout()
         self.font_combo = QComboBox()
-        self.font_combo.addItems([self.tr("Normal Font Size"),"10","11","12","13", "14","15", "16", "17","18", "19","20","21", "22","365"])
+        self.font_combo.addItems([self.tr("Normal Font Size"),"10","11","12","13","14","15","16","17","18","19","20","21","22","365"])
         self.font_combo.currentTextChanged.connect(self.change_font_size)
-        layout.addWidget(self.font_combo)
+        font_layout.addWidget(QLabel(self.tr("字体大小:")))
+        font_layout.addWidget(self.font_combo)
+        main_layout.addLayout(font_layout)
         
+        # 统计信息
         self.stats_label = QLabel(self.tr("Lines: 0\nINFO: 0 | WARNING: 0 | ERROR: 0 | DEBUG: 0"))
-        layout.addWidget(self.stats_label)
+        main_layout.addWidget(self.stats_label)
         
-        self.setLayout(layout)
+        self.setLayout(main_layout)
         
-        self.log_handler = QTextEditHandler(self.log_text_edit, self.log_counters)
+        # 添加原始日志存储
+        self.original_logs = []
+        
+        # 日志处理器
+        self.log_handler = QTextEditHandler(self.log_text_edit, self.log_counters, self.original_logs)
         self.log_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logging.getLogger().addHandler(self.log_handler)
+        
+        # 应用默认主题
+        self.apply_theme('light')
+
+    def filter_logs(self):
+        """根据日志级别过滤显示"""
+        level = self.level_combo.currentText()
+        self.log_text_edit.clear()
+        
+        if level == 'ALL':
+            # 显示所有日志，保持原有格式
+            for log in self.original_logs:
+                self.log_handler.format_and_append_log(log)
+        else:
+            # 按级别过滤显示
+            for log in self.original_logs:
+                if f' - {level} - ' in log:
+                    self.log_handler.format_and_append_log(log)
     
+    def search_logs(self):
+        """搜索日志内容"""
+        search_text = self.search_input.text()
+        
+        # 先恢复原始显示
+        self.filter_logs()
+        
+        if search_text:
+            cursor = self.log_text_edit.textCursor()
+            format = QTextCharFormat()
+            format.setBackground(QColor("yellow"))
+            
+            # 高亮匹配文本
+            regex = QRegExp(search_text, Qt.CaseInsensitive)
+            pos = 0
+            while True:
+                cursor = self.log_text_edit.document().find(regex, pos)
+                if cursor.isNull():
+                    break
+                cursor.mergeCharFormat(format)
+                pos = cursor.position()
+    
+    def export_logs(self):
+        """导出日志到文件"""
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("导出日志"),
+            "",
+            self.tr("日志文件 (*.log);;文本文件 (*.txt);;所有文件 (*.*)")
+        )
+        if file_name:
+            try:
+                with open(file_name, 'w', encoding='utf-8') as f:
+                    f.write(self.log_text_edit.toPlainText())
+                logger.info(f"[Log/INFO]Logs exported to {file_name}")
+            except Exception as e:
+                logger.error(f"[Log/ERROR]Failed to export logs: {str(e)}")
+    
+    def clear_logs(self):
+        """清除日志"""
+        self.log_text_edit.clear()
+        self.original_logs.clear()
+        self.log_counters = {'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'DEBUG': 0}
+        self.update_statistics()
+        self.search_input.clear()  # 清除搜索框
+        logger.info("[Log/INFO]Logs cleared")
+    
+    def toggle_auto_scroll(self, state):
+        """切换自动滚动"""
+        self.auto_scroll = state == Qt.Checked
+    
+    def toggle_theme(self):
+        """切换明暗主题"""
+        current_bg = self.log_text_edit.palette().color(QPalette.Base)
+        if current_bg.lightness() > 128:
+            self.apply_theme('dark')
+        else:
+            self.apply_theme('light')
+    
+    def apply_theme(self, theme):
+        if theme == 'dark':
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QTextEdit {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                    border: 1px solid #3c3c3c;
+                }
+                QPushButton {
+                    background-color: #3c3c3c;
+                    border: none;
+                    padding: 5px;
+                    color: #ffffff;
+                }
+                QPushButton:hover {
+                    background-color: #4c4c4c;
+                }
+                QComboBox {
+                    background-color: #3c3c3c;
+                    border: 1px solid #505050;
+                    color: #ffffff;
+                }
+                QLineEdit {
+                    background-color: #3c3c3c;
+                    border: 1px solid #505050;
+                    color: #ffffff;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+                QTextEdit {
+                    background-color: #ffffff;
+                    color: #000000;
+                    border: 1px solid #cccccc;
+                }
+                QPushButton {
+                    background-color: #f0f0f0;
+                    border: none;
+                    padding: 5px;
+                    color: #000000;
+                }
+                QPushButton:hover {
+                    background-color: #e0e0e0;
+                }
+                QComboBox {
+                    background-color: #ffffff;
+                    border: 1px solid #cccccc;
+                }
+                QLineEdit {
+                    background-color: #ffffff;
+                    border: 1px solid #cccccc;
+                }
+            """)
+
+    # 保留原有方法
     def closeEvent(self, event):
         event.accept()
         logger.info("[Log/INFO]Debug window closed")
-
 
     def change_font_size(self, size_str):
         if size_str == self.tr("Normal Font Size"):
@@ -208,13 +420,17 @@ class DebugWindow(QWidget):
         font.setPointSize(size)
         self.log_text_edit.setFont(font)
         logging.info(self.tr("Font Size Changed to %s"), size)
+        
     def update_statistics(self):
+        """更新统计信息显示"""
         total_lines = self.log_text_edit.document().blockCount()
-        info_count = self.log_counters.get('INFO', 0)
-        warning_count = self.log_counters.get('WARNING', 0)
-        error_count = self.log_counters.get('ERROR', 0)
-        debug_count = self.log_counters.get('DEBUG', 0)
-        self.stats_label.setText(self.tr(f"Lines: {total_lines}\nINFO: {info_count} | WARNING: {warning_count} | ERROR: {error_count} | DEBUG: {debug_count}"))
+        stats_text = f"Lines: {total_lines}\n"
+        stats_text += f"INFO: {self.log_counters['INFO']} | "
+        stats_text += f"WARNING: {self.log_counters['WARNING']} | "
+        stats_text += f"ERROR: {self.log_counters['ERROR']} | "
+        stats_text += f"DEBUG: {self.log_counters['DEBUG']}"
+        
+        self.stats_label.setText(self.tr(stats_text))
 
 # debug mod
 debug_version = '1.1.3Release'
@@ -237,6 +453,13 @@ import re
 
 
 def delete_old_logs(directory, time_threshold_days=3):
+    # 确保目录存在
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except Exception as e:
+        logger.error(f"创建日志目录失败: {e}")
+        return
+
     if not os.path.exists(directory):
         logger.error(f"目录不存在: {directory}")
         return
@@ -244,36 +467,33 @@ def delete_old_logs(directory, time_threshold_days=3):
     now = datetime.datetime.now()
     logs_by_date = {}
 
-    for filename in os.listdir(directory):
-        if filename.endswith('.log'):
-            match = re.match(r'TsukiNotes_Log_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.log', filename)
-            if match:
-                date_str = match.group(1)
-                time_str = match.group(2)
-                timestamp_str = f"{date_str}_{time_str}"
-                try:
-                    log_time = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d_%H-%M-%S')
-                    time_difference = (now - log_time).days  # 计算时间差
+    try:
+        for filename in os.listdir(directory):
+            if filename.endswith('.log'):
+                match = re.match(r'TsukiNotes_Log_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.log', filename)
+                if match:
+                    date_str = match.group(1)
+                    time_str = match.group(2)
+                    timestamp_str = f"{date_str}_{time_str}"
+                    try:
+                        log_time = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d_%H-%M-%S')
+                        time_difference = (now - log_time).days
 
-                    if time_difference > time_threshold_days:  # 比较时间差
-                        file_path = os.path.join(directory, filename)
-                        os.remove(file_path)
-                        logger.info(f"删除文件: {file_path}")
-                    else:
-                        if date_str not in logs_by_date:
-                            logs_by_date[date_str] = []
-                        logs_by_date[date_str].append((log_time, filename))
-                except ValueError as e:
-                    logger.error(f"时间戳解析错误: {timestamp_str} - 错误: {e}")
-
-    for date_str, log_files in logs_by_date.items():
-        if len(log_files) > 1:
-            log_files.sort() 
-            latest_log = log_files[-1]
-            for log_time, filename in log_files[:-1]:  # 保留最新的一个
-                file_path = os.path.join(directory, filename)
-                os.remove(file_path)
-                logger.info(f"删除文件: {file_path}，保留最新文件: {latest_log[1]}")
+                        if time_difference > time_threshold_days:
+                            file_path = os.path.join(directory, filename)
+                            try:
+                                os.remove(file_path)
+                                logger.info(f"删除过期日志文件: {file_path}")
+                            except Exception as e:
+                                logger.error(f"删除文件失败 {file_path}: {e}")
+                        else:
+                            if date_str not in logs_by_date:
+                                logs_by_date[date_str] = []
+                            logs_by_date[date_str].append((log_time, filename))
+                    except ValueError as e:
+                        logger.error(f"时间戳解析错误: {timestamp_str} - {e}")
+    except Exception as e:
+        logger.error(f"处理日志文件时发生错误: {e}")
 
 log_directory = os.path.join('tsuki', 'assets', 'log', 'temp')
 delete_old_logs(log_directory)
@@ -711,55 +931,106 @@ class SyntaxHighlighter(QSyntaxHighlighter):
         self.setCurrentBlockState(1)
         self.highlightMultilineComments(text)
 
+def any(name, alternates):
+    """Return a named group pattern matching list of alternates."""
+    return "(?P<%s>" % name + "|".join(alternates) + ")"
+
+def make_pat():
+    """Generate pattern for Python syntax highlighting.
+    
+    Adapted from Python IDLE's colorizer.py
+    Licensed under the Python Software Foundation License Version 2.
+    """
+    kw = r"\b" + any("KEYWORD", keyword.kwlist) + r"\b"
+    match_softkw = (
+        r"^[ \t]*" +  
+        r"(?P<MATCH_SOFTKW>match)\b" +
+        r"(?![ \t]*(?:" + "|".join([  
+            r"[:,;=^&|@~)\]}]",  
+            r"\b(?:" + r"|".join(keyword.kwlist) + r")\b",  
+        ]) +
+        r"))"
+    )
+    case_default = (
+        r"^[ \t]*" +  
+        r"(?P<CASE_SOFTKW>case)" +
+        r"[ \t]+(?P<CASE_DEFAULT_UNDERSCORE>_\b)"
+    )
+    case_softkw_and_pattern = (
+        r"^[ \t]*" +  
+        r"(?P<CASE_SOFTKW2>case)\b" +
+        r"(?![ \t]*(?:" + "|".join([  
+            r"_\b",  
+            r"[:,;=^&|@~)\]}]",  
+            r"\b(?:" + r"|".join(keyword.kwlist) + r")\b",  
+        ]) +
+        r"))"
+    )
+    builtinlist = [str(name) for name in dir(builtins)
+                   if not name.startswith('_') and
+                   name not in keyword.kwlist]
+    builtin = r"([^.'\"\\#]\b|^)" + any("BUILTIN", builtinlist) + r"\b"
+    comment = any("COMMENT", [r"#[^\n]*"])
+    stringprefix = r"(?i:r|u|f|fr|rf|b|br|rb)?"
+    sqstring = stringprefix + r"'[^'\\\n]*(\\.[^'\\\n]*)*'?"
+    dqstring = stringprefix + r'"[^"\\\n]*(\\.[^"\\\n]*)*"?'
+    sq3string = stringprefix + r"'''[^'\\]*((\\.|'(?!''))[^'\\]*)*(''')?"
+    dq3string = stringprefix + r'"""[^"\\]*((\\.|"(?!""))[^"\\]*)*(""")?'
+    string = any("STRING", [sq3string, dq3string, sqstring, dqstring])
+    return re.compile("|".join([
+        builtin, comment, string, kw,
+        match_softkw, case_default,
+        case_softkw_and_pattern,
+        any("SYNC", [r"\n"]),
+    ]), re.DOTALL | re.MULTILINE)
+
+def matched_named_groups(re_match):
+    """Get only the non-empty named groups from an re.Match object."""
+    return ((k, v) for (k, v) in re_match.groupdict().items() if v)
+
+# 定义tag映射
+prog_group_name_to_tag = {
+    "MATCH_SOFTKW": "KEYWORD",
+    "CASE_SOFTKW": "KEYWORD",
+    "CASE_DEFAULT_UNDERSCORE": "KEYWORD",
+    "CASE_SOFTKW2": "KEYWORD",
+}
+
 class PythonHighlighter(SyntaxHighlighter):
+    """Python syntax highlighter based on IDLE's colorizer.
+    
+    This implementation is adapted from Python IDLE's colorizer.py
+    Licensed under the Python Software Foundation License Version 2.
+    Original source: https://github.com/python/cpython/blob/main/Lib/idlelib/colorizer.py
+    """
     def __init__(self, light=True, parent=None):
         super().__init__(parent)
         self.light = light
         
+        # 基于IDLE的配色方案
         self.colors = {
-            'keyword': "#6A5ACD",
-            'builtin': "#4169E1", 
-            'string': "#32CD32",
-            'function': "#8B4513",
-            'comment': "#708090",
-            'decorator': "#A0522D",
-            'number': "#800080",
-            'special': "#B22222",
-            'qt': "#4682B4",
-            'color_code': "#8B008B",
-            'class': "#2F4F4F",
-            'param': "#696969",
-            'operator': "#8B0000",
-            'bracket': "#2F4F4F",
-            'self': "#FF4500",  # 新增self关键字的颜色
-            'single_comment': "#FF0000"  # 新增单行注释的颜色
+            'COMMENT': "#DD0000",    # 红色注释
+            'KEYWORD': "#FF7700",    # 橙色关键字
+            'BUILTIN': "#900090",    # 紫色内置函数
+            'STRING': "#00AA00",     # 绿色字符串
+            'DEFINITION': "#0000FF", # 蓝色定义
+            'SYNC': None,            # 同步标记(无颜色)
+            'TODO': None,            # 待处理标记(无颜色)
+            'ERROR': "#FF0000",      # 错误标记
+            'hit': "#HHH"           # 搜索匹配(保持原样)
         }
 
         # 创建格式
-        self.formats = {key: self.create_format(color) for key, color in self.colors.items()}
-        
-        # 定义关键词和模式
-        self.patterns = {
-            'keyword': r"\b(and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|not|or|pass|raise|return|try|while|with|yield|None|True|False|async|await|nonlocal)\b",
-            'builtin': r"\b(abs|all|any|ascii|bin|bool|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\b",
-            'string': r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\')',
-            'function': r"\b([A-Za-z_][A-Za-z0-9_]*(?=\s*\())",
-            'decorator': r"(@\w+)",
-            'comment': r"(#[^\n]*(?<!#=+)(?<!=#))",
-            'number': r"\b([+-]?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\b",
-            'special': r"(\\[nrtfvb]|/\S+)",
-            'qt': r"\b(QMessage|Dialog|QWidget|QMainWindow|QApplication)\b",
-            'color_code': r"(#[0-9A-Fa-f]{3,6})",
-            'class': r"\b(class\s+(\w+))",
-            'param': r"\b(?<=def\s+\w+\()[\w,\s=]+(?=\):)",
-            'operator': r"(\+|-|\*|/|%|=|<|>|&|\||\^|~|@)",
-            'bracket': r"(\(|\)|\[|\]|\{|\})",
-            'self': r"\b(self)\b(?=\.)",  # 新增匹配self.的模式
-            'single_comment': r"^#[^\n]*$"  # 新增匹配单独一行的注释
-        }
+        self.formats = {}
+        for tag, color in self.colors.items():
+            format = QTextCharFormat()
+            if color:
+                format.setForeground(QColor(color))
+            self.formats[tag] = format
 
         # 编译正则表达式
-        self.regex = {key: QRegExp(pattern) for key, pattern in self.patterns.items()}
+        self.prog = make_pat()  # 使用IDLE的pattern生成函数
+        self.idprog = re.compile(r"\s+(\w+)")
 
     def create_format(self, color):
         format = QTextCharFormat()
@@ -768,33 +1039,23 @@ class PythonHighlighter(SyntaxHighlighter):
         return format
 
     def highlightBlock(self, text):
-        # 先处理其他语法
-        for key, regex in self.regex.items():
-            if key not in ['comment', 'single_comment']:  # 先处理非注释部分
-                index = regex.indexIn(text)
-                while index >= 0:
-                    length = regex.matchedLength()
-                    self.setFormat(index, length, self.formats[key])
-                    index = regex.indexIn(text, index + length)
-
-        # 处理单行注释
-        single_comment_regex = self.regex['single_comment']
-        index = single_comment_regex.indexIn(text)
-        if index >= 0:
-            length = single_comment_regex.matchedLength()
-            self.setFormat(index, length, self.formats['single_comment'])
-        else:
-            # 处理普通注释
-            comment_regex = self.regex['comment']
-            index = comment_regex.indexIn(text)
-            while index >= 0:
-                length = comment_regex.matchedLength()
-                if not re.match(r'#=+$', text[index:index+length]):
-                    self.setFormat(index, length, self.formats['comment'])
-                index = comment_regex.indexIn(text, index + length)
-
-        # 特殊处理多行注释
-        self.highlightMultilineComments(text)
+        # 清除之前的格式
+        self.setFormat(0, len(text), QTextCharFormat())
+        
+        # 逐个匹配并应用格式
+        for match in self.prog.finditer(text):
+            for group_name, matched_text in matched_named_groups(match):
+                start, end = match.span(group_name)
+                # 使用IDLE的tag映射
+                tag = prog_group_name_to_tag.get(group_name, group_name)
+                if tag in self.formats:
+                    self.setFormat(start, end - start, self.formats[tag])
+                
+                # 处理函数/类定义
+                if matched_text in ("def", "class"):
+                    if m1 := self.idprog.match(text, end):
+                        start, end = m1.span(1)
+                        self.setFormat(start, end - start, self.formats['DEFINITION'])
 
     def highlightMultilineComments(self, text):
         # 处理三引号字符串
@@ -802,17 +1063,16 @@ class PythonHighlighter(SyntaxHighlighter):
         triple_quote_matches = re.finditer(triple_quote_pattern, text, re.DOTALL)
         for match in triple_quote_matches:
             start, end = match.span()
-            self.setFormat(start, end - start, self.formats['string'])
+            self.setFormat(start, end - start, self.formats['STRING'])
         
         # 处理多行注释
         comment_start = QRegExp(r'(?<!\"|\'|\w)"""(?!\"|\')')
         comment_end = QRegExp(r'(?<!\"|\'|\w)"""(?!\"|\')')
-        self.highlightMultiline(text, comment_start, comment_end, self.formats['comment'])
+        self.highlightMultiline(text, comment_start, comment_end, self.formats['COMMENT'])
 
         comment_start = QRegExp(r"(?<!\"|\'|\w)'''(?!\"|\')")
         comment_end = QRegExp(r"(?<!\"|\'|\w)'''(?!\"|\')")
-        self.highlightMultiline(text, comment_start, comment_end, self.formats['comment'])
-
+        self.highlightMultiline(text, comment_start, comment_end, self.formats['COMMENT'])
 
     def highlightMultiline(self, text, start, end, format):
         if self.previousBlockState() == 1:
@@ -2090,14 +2350,15 @@ class TsukiReader(QMainWindow):
         app = QApplication.instance()
         font = QFont("Microsoft YaHei")
         font.setPointSize(10)
+        self.settings = QSettings('TsukiNotes', 'Editor')
         app.setFont(font)
         QMetaType.type("QTextCursor")
         self.before = ''
-        self.current_version = '1.6.0' 
-        self.real_version = '1.6.0'
-        self.update_Date = '2024/11/16'
+        self.current_version = '1.6.1' 
+        self.real_version = '1.6.1'
+        self.update_Date = '2024/12/07'
         self.version_td = 'Release'
-        self.version_gj = 'b-v160B-241116R'
+        self.version_gj = 'b-v161B-241207R'
         self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
         self.load_langs()
 
@@ -2107,6 +2368,7 @@ class TsukiReader(QMainWindow):
                       f"[Back]UpdateDate:{self.update_Date}\n"
                       f"[Back]Version Update The Channel:{self.version_td}\n"
                       f"[Back]versionTHE INTERNAL BUILD NUMBER:{self.version_gj}\n"
+                      f"[Back]Powered By ZZBuAoYe\n"
                       f"====================================================================================================================")
 
         self.text_modified = False
@@ -2540,7 +2802,7 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             ClutMessageBox.show_message(self, '错误', f'发生错误：{str(e)}')
             logging.error(f"{e}")
-            self.statusBar().showMessage(f'TsukiFS❌: 字体大小设置失败！详见MessageBox！')
+            self.statusBar().showMessage(f'TsukiFS❌: 字体大小��置失败！详见MessageBox！')
             logger.error(f"[Log/ERROR]ERROR Set Font Size: {str(e)}")
 
     def save_font_size_to_cfg(self, font_size):
@@ -2583,8 +2845,11 @@ class TsukiReader(QMainWindow):
         self.openAct = QAction(QIcon('./tsuki/assets/GUI/resources/import_file.png'), self.tr('打开文件（Ctrl+O）'), self)
         self.openAct.triggered.connect(self.openFile)
 
-        self.saveAct = QAction(QIcon('./tsuki/assets/GUI/resources/save_file.png'), self.tr('保存修改（Ctrl+S）'), self)
+        self.saveAct = QAction(QIcon('./tsuki/assets/GUI/resources/save_file.png'), self.tr('直接保存修改（Ctrl+S）'), self)
         self.saveAct.triggered.connect(self.saveFile)
+
+        self.saveAsAct = QAction(QIcon('./tsuki/assets/GUI/resources/save_file.png'), self.tr('另存为（Ctrl+Shift+S）'), self)
+        self.saveAsAct.triggered.connect(self.saveAs)  # 改为 saveAs
 
         self.closeAct = QAction(QIcon('./tsuki/assets/GUI/resources/off_file.png'), self.tr('关闭文件（Ctrl+W）'), self)
         self.closeAct.triggered.connect(self.closeFile)
@@ -2652,6 +2917,7 @@ class TsukiReader(QMainWindow):
         fileMenu.addAction(self.newAct)
         fileMenu.addAction(self.openAct)
         fileMenu.addAction(self.saveAct)
+        fileMenu.addAction(self.saveAsAct)
         fileMenu.addAction(self.closeAct)
         fileMenu.addAction(self.exitAct)
         
@@ -2748,17 +3014,18 @@ class TsukiReader(QMainWindow):
 
     # 快捷键绑定
     def createShortcuts(self):
-        self.shortcut_search = QShortcut('Ctrl+F', self)
-        self.shortcut_save = QShortcut('Ctrl+S', self)
-        self.shortcut_clear = QShortcut('Ctrl+Shift+C', self)
-        self.shortcut_undo = QShortcut('Ctrl+Z', self)
-        self.shortcut_redo = QShortcut('Ctrl+Y', self)
-        self.shortcut_cut = QShortcut('Ctrl+X', self)
-        self.shortcut_open = QShortcut('Ctrl+O', self)
-        self.shortcut_new = QShortcut('Ctrl+T', self)
-        self.shortcut_close = QShortcut('Ctrl+W', self)
-        self.shortcut_run = QShortcut('Ctrl+F5', self)
-        self.shortcut_debugrun = QShortcut('Ctrl+F6', self)
+        self.shortcut_search = QShortcut(QKeySequence('Ctrl+F'), self)
+        self.shortcut_save = QShortcut(QKeySequence('Ctrl+S'), self)
+        self.shortcut_clear = QShortcut(QKeySequence('Ctrl+Shift+C'), self)
+        self.shortcut_undo = QShortcut(QKeySequence('Ctrl+Z'), self)
+        self.shortcut_redo = QShortcut(QKeySequence('Ctrl+Y'), self)
+        self.shortcut_cut = QShortcut(QKeySequence('Ctrl+X'), self)
+        self.shortcut_open = QShortcut(QKeySequence('Ctrl+O'), self)
+        self.shortcut_new = QShortcut(QKeySequence('Ctrl+T'), self)
+        self.shortcut_close = QShortcut(QKeySequence('Ctrl+W'), self)
+        self.shortcut_run = QShortcut(QKeySequence('Ctrl+F5'), self)
+        self.shortcut_debugrun = QShortcut(QKeySequence('Ctrl+F6'), self)
+        self.shortcut_save_as = QShortcut(QKeySequence('Ctrl+Shift+S'), self)
 
         self.shortcut_search.activated.connect(self.performSearch)
         self.shortcut_save.activated.connect(self.performSave)
@@ -2771,6 +3038,8 @@ class TsukiReader(QMainWindow):
         self.shortcut_close.activated.connect(self.closeFile)
         self.shortcut_run.activated.connect(self.runcode)
         self.shortcut_debugrun.activated.connect(self.runcode_debug)
+        self.shortcut_save_as.activated.connect(self.saveAs)
+        
 
 
     def updateStatusLabel(self):
@@ -3009,7 +3278,13 @@ class TsukiReader(QMainWindow):
                         scaled_pixmap = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         image_viewer.setPixmap(scaled_pixmap)
                         
-                        self.tabWidget.addTab(image_viewer, os.path.basename(fileName))
+                        # 获取图标
+                        icon = QIcon(self.getIconPath(fileName))
+                        
+                        # 添加标签页并设置图标
+                        index = self.tabWidget.addTab(image_viewer, os.path.basename(fileName))
+                        self.tabWidget.setTabIcon(index, icon)
+                        
                         self.updateWindowTitle(fileName)
                         self.statusBar().showMessage(self.tr(f'TsukiOpen✔: 图片 [{fileName}] 已成功打开！'))
                         logger.info(self.tr(f"[Log/INFO]Open Image File Succeed: {fileName}"))
@@ -3198,8 +3473,28 @@ class TsukiReader(QMainWindow):
             index = self.tabWidget.addTab(hex_viewer, os.path.basename(fileName))
             self.tabWidget.setCurrentIndex(index)
             
-            # 设置图标
-            icon_path = './tsuki/assets/GUI/resources/language/exe.png'
+            # 设置图标 - 根据文件扩展名设置对应图标
+            file_ext = os.path.splitext(fileName)[1].lower()
+            icon_path = None
+            
+            # 图片文件扩展名图标映射
+            image_extensions = {
+                '.png': './tsuki/assets/GUI/resources/language/image.png',
+                '.jpg': 'image.png', 
+                '.jpeg': 'image.png',
+                '.gif': 'gif.png',
+                '.bmp': 'bmp.png',
+                '.ico': 'ico.png',
+                '.svg': 'svg.png',
+                '.webp': 'webp.png'
+            }
+            
+            if file_ext in image_extensions:
+                icon_path = f'./tsuki/assets/GUI/resources/language/{image_extensions[file_ext]}'
+            else:
+                # 默认使用exe图标
+                icon_path = './tsuki/assets/GUI/resources/language/exe.png'
+                
             if os.path.exists(icon_path):
                 self.tabWidget.setTabIcon(index, QIcon(icon_path))
                 
@@ -3566,7 +3861,7 @@ class TsukiReader(QMainWindow):
 
     def apply_background_settings(self, widget):
         config = configparser.ConfigParser()
-        config_path = 'tsuki/assets/app/cfg/background/background_color.ini'
+        config_path = self.get_app_path('assets/app/cfg/background/background_color.ini')
         
         try:
             config.read(config_path, encoding='utf-8')
@@ -3701,12 +3996,6 @@ class TsukiReader(QMainWindow):
             '.otf': './tsuki/assets/GUI/resources/language/otf.png',
             '.ini': './tsuki/assets/GUI/resources/language/ini.png', # Nope
             '.txt': './tsuki/assets/GUI/resources/language/text.png', 
-            '.png': './tsuki/assets/GUI/resources/language/image.png',
-            '.jpg': './tsuki/assets/GUI/resources/language/image.png', 
-            '.jpeg': './tsuki/assets/GUI/resources/language/image.png',
-            '.gif': './tsuki/assets/GUI/resources/language/image.png',
-            '.bmp': './tsuki/assets/GUI/resources/language/image.png',
-            '.svg': './tsuki/assets/GUI/resources/language/svg.png',
         }
 
     def getIconPath(self, file_name):
@@ -3761,31 +4050,313 @@ class TsukiReader(QMainWindow):
         if not current_tab:
             return
         
+        # 获取当前文件路径
         file_path = current_tab.file_path if hasattr(current_tab, 'file_path') else None
         
         if not file_path:
-            file_path, _ = QFileDialog.getSaveFileName(self, self.tr("保存文件"), "", self.tr("所有文件 (*)"))
+            # 构建文件类型过滤器
+            filters = self.tr(
+                "文本文件 (*.txt);;Python文件 (*.py);;Markdown文件 (*.md);;所有文件 (*)"
+            )
+            
+            # 获取上次保存路径
+            last_path = self.settings.value('last_save_path', '')
+            
+            # 打开保存对话框
+            file_path, selected_filter = QFileDialog.getSaveFileName(
+                self,
+                self.tr("保存文件"),
+                last_path,
+                filters
+            )
+            
             if not file_path:
                 return
+                
+            # 记住这次的保存路径
+            self.settings.setValue('last_save_path', os.path.dirname(file_path))
             current_tab.file_path = file_path
         
         try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                file.write(current_tab.toPlainText())
+            # 检测文件编码
+            text = current_tab.toPlainText()
+            try:
+                # 尝试使用UTF-8编码
+                text.encode('utf-8')
+                encoding = 'utf-8'
+            except UnicodeEncodeError:
+                # 如果UTF-8失败,使用GBK
+                encoding = 'gbk'
             
-            self.statusBar().showMessage(self.tr(f'文件已保存: {file_path}'), 2000)
+            # 保存文件
+            with open(file_path, 'w', encoding=encoding) as file:
+                file.write(text)
+            
+            # 更新UI状态
             self.updateTabIcon(self.tabWidget.currentIndex())
-            logger.info(self.tr(f"[Log/INFO]文件已保存: {file_path}"))
+            self.statusBar().showMessage(
+                self.tr(f'✔ 文件已保存: {os.path.basename(file_path)} [{encoding}]'), 
+                3000
+            )
+            logger.info(self.tr(f"[Log/INFO]文件已保存: {file_path} (编码: {encoding})"))
+            
+            # 清除修改标记
+            if hasattr(current_tab, 'document'):
+                current_tab.document().setModified(False)
+                
+        except (IOError, OSError) as e:
+            # 处理IO错误
+            error_msg = self.tr(f"无法保存文件: {str(e)}")
+            ClutMessageBox.show_message(
+                self, 
+                self.tr('保存错误'), 
+                error_msg
+            )
+            logger.error(self.tr(f"[Log/ERROR]保存失败(IO): {str(e)}"))
+            self.statusBar().showMessage(self.tr('❌ 保存失败'), 3000)
+            
         except Exception as e:
-            ClutMessageBox.show_message(self, self.tr('错误'), self.tr(f'保存文件时发生错误：{str(e)}'))
-            logger.error(self.tr(f"[Log/ERROR]保存文件失败: {str(e)}"))
-            self.statusBar().showMessage(self.tr('保存文件失败'), 2000)
+            # 处理其他错误
+            error_msg = self.tr(f"保存时发生未知错误: {str(e)}")
+            ClutMessageBox.show_message(
+                self,
+                self.tr('保存错误'),
+                error_msg
+            )
+            logger.error(self.tr(f"[Log/ERROR]保存失败: {str(e)}"))
+            self.statusBar().showMessage(self.tr('❌ 保存失败'), 3000)
+
+    def saveAs(self):
+        """另存为功能"""
+        current_tab = self.tabWidget.currentWidget()
+        if not current_tab:
+            return
+        
+        # 获取当前标签页的名称和文件后缀
+        current_tab_name = self.tabWidget.tabText(self.tabWidget.currentIndex())
+        file_extension = os.path.splitext(current_tab_name)[1]
+        
+        dialog = QFileDialog(self)
+        dialog.setWindowTitle(self.tr("另存为"))
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setOption(QFileDialog.DontUseNativeDialog)
+        
+        # 设置默认文件名和后缀
+        dialog.selectFile(current_tab_name)
+        
+        # 根据文件后缀设置默认选中的文件类型过滤器
+        filters = [
+            ("文本文件", "*.txt"),
+            ("Python文件", "*.py"),
+            ("Markdown文件", "*.md"),
+            ("所有文件", "*")
+        ]
+        
+        filter_string = ";;".join([f"{name} ({ext})" for name, ext in filters])
+        dialog.setNameFilter(filter_string)
+        
+        # 根据当前文件后缀选择对应的过滤器
+        if file_extension:
+            for name, ext in filters:
+                if ext.endswith(file_extension):
+                    dialog.selectNameFilter(f"{name} ({ext})")
+                    break
+        
+        # 查找并设置工具按钮的图标和样式
+        for button in dialog.findChildren(QToolButton):
+            button.setIconSize(QSize(20, 20))
+            if button.accessibleName() == "Back":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/back.png'))
+            elif button.accessibleName() == "Forward":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/forward.png'))
+            elif button.accessibleName() == "Parent Directory":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/up.png'))
+            elif button.accessibleName() == "Create New Folder":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/new_folder.png'))
+                button.setIconSize(QSize(16, 16))
+            elif button.accessibleName() == "List View":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/list_view.png'))
+                button.setIconSize(QSize(16, 16))
+            elif button.accessibleName() == "Detail View":
+                button.setIcon(QIcon('./tsuki/assets/GUI/resources/nav/detail_view.png'))
+                button.setIconSize(QSize(16, 16))
+                
+            # 设置按钮样式
+            button.setStyleSheet("""
+                QToolButton {
+                    background-color: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 4px;
+                    padding: 4px;
+                    margin: 2px;
+                    min-width: 30px;
+                    min-height: 30px;
+                }
+                QToolButton:hover {
+                    background-color: #e5f3ff;
+                    border: 1px solid #cce4f7;
+                }
+                QToolButton:pressed {
+                    background-color: #cce4f7;
+                    border: 1px solid #99d1ff;
+                }
+            """)
+        
+        # 设置对话框的整体样式为拟态风格
+        dialog.setStyleSheet("""
+            QFileDialog {
+                background-color: #f0f0f0;
+                border-radius: 10px;
+                border: 1px solid #ddd;
+            }
+            QLabel {
+                color: #333;
+                font-family: 'Microsoft YaHei';
+                font-size: 12px;
+            }
+            QComboBox {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 5px;
+                min-width: 120px;
+                background: #f0f0f0;
+                font-family: 'Microsoft YaHei';
+            }
+            QComboBox:hover {
+                border-color: #0078d4;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-family: 'Microsoft YaHei';
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton[text="Cancel"] {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QPushButton[text="Cancel"]:hover {
+                background-color: #e0e0e0;
+            }
+            QLineEdit {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+                font-family: 'Microsoft YaHei';
+                background: #ffffff;
+            }
+            QLineEdit:focus {
+                border-color: #0078d4;
+            }
+            QTreeView, QListView {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background-color: #f0f0f0;
+                font-family: 'Microsoft YaHei';
+                selection-background-color: #e5f3ff;
+                selection-color: #000;
+                outline: none;
+            }
+            QTreeView::item, QListView::item {
+                padding: 4px;
+                border-radius: 2px;
+            }
+            QTreeView::item:hover, QListView::item:hover {
+                background-color: #f0f9ff;
+            }
+            QTreeView::item:selected, QListView::item:selected {
+                background-color: #e5f3ff;
+                color: #000;
+            }
+            QHeaderView::section {
+                background-color: #f5f5f5;
+                border: none;
+                border-right: 1px solid #ddd;
+                border-bottom: 1px solid #ddd;
+                padding: 4px;
+                font-family: 'Microsoft YaHei';
+                font-size: 12px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #f5f5f5;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #cdcdcd;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #a6a6a6;
+            }
+        """)
+        
+        # 创建编码选择组件
+        encoding_label = QLabel(self.tr("编码:"), dialog)
+        encoding_combo = QComboBox(dialog)
+        encodings = ['UTF-8', 'GBK', 'GB2312', 'GB18030', 'ASCII', 'ISO-8859-1']
+        encoding_combo.addItems(encodings)
+        encoding_combo.setCurrentText('UTF-8')
+        
+        # 获取对话框的布局
+        layout = dialog.layout()
+        
+        # 创建水平布局来放置编码选择组件
+        encoding_layout = QHBoxLayout()
+        encoding_layout.addWidget(encoding_label)
+        encoding_layout.addWidget(encoding_combo)
+        encoding_layout.addStretch()
+        
+        # 将编码选择添加到对话框布局的底部
+        if isinstance(layout, QGridLayout):
+            row = layout.rowCount()
+            layout.addLayout(encoding_layout, row, 0, 1, layout.columnCount())
+        
+        if dialog.exec_() == QDialog.Accepted:
+            file_path = dialog.selectedFiles()[0]
+            encoding = encoding_combo.currentText()
+            
+            try:
+                # 保存文件
+                text = current_tab.toPlainText()
+                with open(file_path, 'w', encoding=encoding) as file:
+                    file.write(text)
+                
+                # 更新UI状态
+                current_tab.file_path = file_path
+                self.updateTabIcon(self.tabWidget.currentIndex())
+                self.tabWidget.setTabText(self.tabWidget.currentIndex(), os.path.basename(file_path))
+                
+                self.statusBar().showMessage(
+                    self.tr(f'✔ 文件已另存为: {os.path.basename(file_path)} [{encoding}]'), 
+                    3000
+                )
+                logger.info(self.tr(f"[Log/INFO]文件已另存为: {file_path} (编码: {encoding})"))
+                
+                if hasattr(current_tab, 'document'):
+                    current_tab.document().setModified(False)
+                    
+            except Exception as e:
+                error_msg = self.tr(f"另存为失败: {str(e)}")
+                ClutMessageBox.show_message(self, self.tr('保存错误'), error_msg)
+                logger.error(self.tr(f"[Log/ERROR]另存为失败: {str(e)}"))
+                self.statusBar().showMessage(self.tr('❌ 另存为失败'), 3000)
 
     def closeFile(self):
         m = self.tabWidget.currentIndex()
         if m == -1: return
         currentWidget = self.tabWidget.currentWidget()
-        
         # 检查是否为图片查看器
         if isinstance(currentWidget, QLabel):
             self.closeTab(m)
@@ -3817,8 +4388,6 @@ class TsukiReader(QMainWindow):
             ClutMessageBox.show_message(self, self.tr('错误'), self.tr(f'发生错误：{str(e)}'))
             self.statusBar().showMessage(self.tr(f'TsukiTab❌: 关闭标签页失败！详见MessageBox！'))
             return
-
-
     def checkForUpdates(self):
         import requests
         import certifi
@@ -5010,7 +5579,6 @@ class TsukiReader(QMainWindow):
             self.statusBar().showMessage(self.tr(f'TsukiApplySetting❌: 应用设置时发生异常：{str(e)}'))
             logger.error(self.tr(f"[Log/ERROR]Apply Settings Failed:{str(e)}"))
 
-
     def addKeywordHighlight(self):
         try:
             current_widget = self.tabWidget.currentWidget()
@@ -5257,6 +5825,51 @@ class TsukiReader(QMainWindow):
         else:
             return 'green'
         
+
+    def get_app_path(self, relative_path=''):
+        """
+        获取应用程序路径，自动处理权限和目录创建
+        
+        Args:
+            relative_path (str): 相对路径，例如 'assets/app/cfg/first'
+            
+        Returns:
+            str: 完整的路径
+        """
+        try:
+            # 确定基础目录：优先使用当前目录，失败则使用用户目录
+            try:
+                base_dir = os.path.abspath('./tsuki')
+                # 测试是否有写入权限
+                test_file = os.path.join(base_dir, '.write_test')
+                if not os.path.exists(base_dir):
+                    os.makedirs(base_dir)
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+            except (PermissionError, OSError):
+                # 如果没有权限，使用用户目录
+                base_dir = os.path.expanduser('~/TsukiNotes/tsuki')
+                if not os.path.exists(base_dir):
+                    os.makedirs(base_dir)
+                logger.info(self.tr(f"[Log/INFO]Using user directory: {base_dir}"))
+
+            # 构建完整路径
+            full_path = os.path.join(base_dir, relative_path)
+            
+            # 如果路径不存在则创建
+            if relative_path and not os.path.exists(full_path):
+                os.makedirs(full_path, exist_ok=True)
+                logger.info(self.tr(f"[Log/INFO]Created directory: {full_path}"))
+                
+            return full_path
+            
+        except Exception as e:
+            logger.error(self.tr(f"[Log/ERROR]Error accessing path {relative_path}: {str(e)}"))
+            # 返回用户目录作为后备方案
+            fallback_path = os.path.expanduser(f'~/TsukiNotes/tsuki/{relative_path}')
+            os.makedirs(fallback_path, exist_ok=True)
+            return fallback_path
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 #====================================================================
+# Name: TsukiNotes Installer Wizard ✨ | 💠Version 1.5.0.16000 | Online Installer
 # Powered by ZZBuAoYe
 # Github: https://github.com/buaoyezz
-# TsukiNotes Build Date: 2024/11/01
-# Install Version: 0.0.1.19000
+# TsukiNotes Build Date: 2024/12/07
+# Install Version: 0.0.2.15200
 # Enjoy!
 #====================================================================
 import sys
@@ -37,7 +38,7 @@ run_as_admin()
 class InstallerWizard(QWizard):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TsukiNotes Wizard | Version 1.0.0.17000 | Online Installer")
+        self.setWindowTitle("TsukiNotes Wizard ✨ | 💠Version 1.5.0.16000 | Online Installer")
         self.resize(800, 600)
         
         self.install_path = r"C:\Program Files\TsukiNotes"
@@ -397,7 +398,7 @@ class InstallProgressPage(QWizardPage):
         # 详细信息文本框
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
-        self.detail_text.setFixedHeight(150)
+        self.detail_text.setFixedHeight(200)  # 增加高度以显示更多日志
         self.detail_text.setStyleSheet("""
             QTextEdit {
                 background-color: #f8f9fa;
@@ -413,54 +414,28 @@ class InstallProgressPage(QWizardPage):
         progress_group.setLayout(progress_layout)
         layout.addWidget(progress_group)
         
-        # add move
-        self.animation_label = QLabel()
-        self.movie = QMovie()
-        self.movie.setFileName("loading_tn_install.gif")
-        try:
-            loading_url = "https://ooo.0x0.ooo/2024/10/26/ODXJuB.gif"
-            response = requests.get(loading_url)
-            if response.status_code == 200:
-                temp_gif = os.path.join(tempfile.gettempdir(), "loading_tn_install.gif")
-                with open(temp_gif, 'wb') as f:
-                    f.write(response.content)
-                self.movie.setFileName(temp_gif)
-        except:
-            self.dot_count = 0
-            self.dot_timer = QTimer()
-            self.dot_timer.timeout.connect(self.update_dots)
-            self.dot_timer.start(500)
-            
-        self.animation_label.setMovie(self.movie)
-        self.movie.start()
-        self.animation_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.animation_label)
+        # 添加提示
+        tip_label = QLabel(
+            "<p style='color: #666; font-size: 11px;'>"
+            "安装完成后，您可以点击*返回*按钮查看完整的安装日志。</p>"
+        )
+        tip_label.setWordWrap(True)
+        layout.addWidget(tip_label)
         
         layout.addStretch()
         self.setLayout(layout)
         
-        # c thread
+        # 初始化其他属性
         self.download_thread = None
         self.is_installation_complete = False
-        
-        # mark
         self.installation_in_progress = False
-        
-        # 添加属性来控制是否允许返回
-        self.setCommitPage(True)  # 将页面设置为提交页面，这会禁用返回按钮
-        
-        # 添加取消标志
         self.is_cancelling = False
-        
-        # 添加取消状态标志
         self.is_cleaning = False
         
-    # 添加此方法来防止返回
     def validatePage(self):
-        # 修改验证逻辑：只有安装成功才能进入下一页
         if self.installation_in_progress:
             return False
-        return self.is_installation_complete  # 只有安装完成才返回True
+        return self.is_installation_complete
 
     def initializePage(self):
         # 立即禁用所有按钮
@@ -593,7 +568,7 @@ class InstallProgressPage(QWizardPage):
                 # 清理安装文件
                 self.cleanup_installation()
                 
-                # 清理完成后启用返回按钮
+                # 清理完成后启用回按钮
                 wizard.button(QWizard.BackButton).setEnabled(True)
                 wizard.button(QWizard.CancelButton).setEnabled(True)
                 
@@ -640,268 +615,387 @@ class DownloadThread(QThread):
     status_updated = pyqtSignal(str, int)
     detail_updated = pyqtSignal(str)
     installation_completed = pyqtSignal()
-    error_occurred = pyqtSignal(str)  # add error signal
+    error_occurred = pyqtSignal(str)
+    progress_updated = pyqtSignal(int, str)
 
     def __init__(self, install_path, status_callback, detail_callback, complete_callback):
         super().__init__()
         self.install_path = install_path
-        
-        # back
         self.status_updated.connect(status_callback, Qt.QueuedConnection)
         self.detail_updated.connect(detail_callback, Qt.QueuedConnection)
         self.installation_completed.connect(complete_callback, Qt.QueuedConnection)
-        
-        # 添加对安装页面的引用
         self.install_page = None
         self.wizard = None
+        self._is_cancelled = False
+        self._current_operation = ""
+
+    def update_detail(self, message):
+        """更新详细信息"""
+        self.detail_updated.emit(message)
+
+    def update_status(self, message, progress):
+        """更新状态"""
+        self.status_updated.emit(message, progress)
+
+    def update_progress(self, progress, message):
+        """更新进度"""
+        self.progress_updated.emit(progress, message)
+        self.update_status(message, progress)
+        self.update_detail(message)
+
+    def cancel(self):
+        """取消安装"""
+        self._is_cancelled = True
+
+    def cleanup_on_error(self):
+        """安装失败时清理"""
+        try:
+            if os.path.exists(self.install_path):
+                shutil.rmtree(self.install_path, ignore_errors=True)
+            self.update_detail("✓ 已清理安装文件")
+        except:
+            pass
+
+    def check_existing_installation(self):
+        """检查是否存在旧版本安装"""
+        try:
+            # 检查是否存在版本文件夹
+            old_version_folder = None
+            for item in os.listdir(self.install_path):
+                if item.startswith("TsukiNotesVer") and item.endswith("Windows"):
+                    old_version_folder = item
+                    break
+
+            if old_version_folder:
+                self.update_detail(f"检测到旧版本: {old_version_folder}")
+                old_version_path = os.path.join(self.install_path, old_version_folder)
+                
+                # 检查是否有正在运行的实
+                exe_name = "TsukiNotes.exe"
+                if self.is_process_running(exe_name):
+                    raise Exception("检测到TsukiNotes正在运行，请关闭后再继续")
+
+                # 删除旧版本
+                self.update_detail("正在删除旧版本...")
+                shutil.rmtree(old_version_path)
+                self.update_detail("✓ 已删除旧版本")
+
+                # 删除旧的快捷方式
+                self.cleanup_old_shortcuts()
+                return True
+            return False
+
+        except Exception as e:
+            raise Exception(f"检查旧版本时出错: {str(e)}")
+
+    def is_process_running(self, process_name):
+        """检查进程是否在运行"""
+        import psutil
+        for proc in psutil.process_iter(['name']):
+            try:
+                if proc.info['name'].lower() == process_name.lower():
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return False
+
+    def cleanup_old_shortcuts(self):
+        """清理旧的快捷方式"""
+        try:
+            # 清理桌面快捷方式
+            desktop_shortcut = os.path.join(os.path.expanduser("~"), "Desktop", "TsukiNotes.lnk")
+            if os.path.exists(desktop_shortcut):
+                os.remove(desktop_shortcut)
+                self.update_detail("✓ 已删除桌面快捷方式")
+
+            # 清理开始菜单快捷方式
+            start_menu_shortcut = os.path.join(os.environ["APPDATA"], 
+                                             "Microsoft", "Windows", "Start Menu", "Programs",
+                                             "TsukiNotes.lnk")
+            if os.path.exists(start_menu_shortcut):
+                os.remove(start_menu_shortcut)
+                self.update_detail("✓ 已删除开始菜单快捷方式")
+
+            # 清理安装目录的快捷方式
+            install_shortcut = os.path.join(self.install_path, "TsukiNotes.lnk")
+            if os.path.exists(install_shortcut):
+                os.remove(install_shortcut)
+                self.update_detail("✓ 已删除安装目录快捷方式")
+
+        except Exception as e:
+            self.update_detail(f"清理快捷方式时出现警告: {str(e)}")
+
     def run(self):
         try:
-            # 检查是否取消
-            if self.install_page and self.install_page.is_cancelling:
+            if self._is_cancelled:
                 return
-                
-            # create path
-            self.update_status("Creating directory...", 10)
-            self.update_detail("Creating installation directory...")
-            os.makedirs(self.install_path, exist_ok=True)
-            self.update_detail("Directory created successfully ✓")
-            
-            # 获取最新版本号
-            self.update_status("Checking version...", 20)
-            self.update_detail("\nChecking latest version...")
-            
-            try:
-                version_url = "http://zzbuaoye.us.kg/TsukiNotes/version.txt"
-                response = requests.get(version_url, timeout=10)
-                response.raise_for_status()
-                
-                version_content = response.text
-                latest_version = None
-                
-                for line in version_content.splitlines():
-                    if line.startswith("version:"):
-                        latest_version = line.split(":")[1].strip()
-                        break
-                
-                if not latest_version:
-                    raise ValueError("无法解析版本信息")
-                    
-                self.update_detail(f"Latest version: {latest_version} ✓")
-                
-            except Exception as e:
-                raise Exception(f"获取版本信息失败: {str(e)}")
-            
-            # download
-            self.update_status("Downloading...", 30)
-            self.update_detail("\nInitiating download...")
-            
-            download_url = (
-                f"https://github.com/buaoyezz/TsukiNotes/releases/download/"
-                f"TsukiNotesV{latest_version}/"
-                f"TsukiNotesVer{latest_version}.Release_x64_Windows.zip"
-            )
-            
-            # Thread
-            temp_zip = os.path.join(tempfile.gettempdir(), "TsukiNotes.zip")
-            self.download_with_progress(download_url, temp_zip)
-            
-            # unpack
-            self.update_status("UnPacking...", 50)
-            self.update_detail("\nExtracting files...")
-            
-            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                total_files = len(zip_ref.namelist())
-                for index, file in enumerate(zip_ref.namelist()):
-                    zip_ref.extract(file, self.install_path)
-                    progress = int(50 + (index / total_files) * 20)
-                    self.update_status(f"Unpacking... {index + 1}/{total_files} Files", progress)
-                    self.update_detail(f"Unpacking... {file} [{index + 1}/{total_files}]")
-            
-            self.update_detail("Extraction completed ✓")
-            
-            # remove the temp
-            os.remove(temp_zip)
-            
-            # create shortcuts
+
+            # 检查并清理旧版本
+            self._current_operation = "检查旧版本"
+            self.update_progress(5, "检查已安装的版本...")
+            has_old_version = self.check_existing_installation()
+            if has_old_version:
+                self.update_detail("✓ 旧版本清理完成")
+
+            # 创建安装目录
+            self._current_operation = "创建目录"
+            self.update_progress(10, "创建安装目录...")
+            if not os.path.exists(self.install_path):
+                os.makedirs(self.install_path)
+            self.update_detail("✓ 目录创建成功")
+
+            # 检查版本
+            self._current_operation = "检查版本"
+            self.update_progress(20, "检查最新版本...")
+            latest_version = self.get_latest_version()
+            self.update_detail(f"✓ 最新版本: {latest_version}")
+
+            # 下载文件
+            self._current_operation = "下载文件"
+            self.update_progress(30, "准备下载...")
+            self.download_package(latest_version)
+
+            # 解压文件
+            self._current_operation = "解压文件"
+            self.update_progress(50, "解压文件...")
+            self.extract_files()
+
+            # 创建快捷方式
             if self.wizard and self.wizard.field("create_shortcut"):
-                self.update_status("创建快捷方式...", 70)
-                self.update_detail("\nCreating shortcuts...")
+                self._current_operation = "创建快捷方式"
+                self.update_progress(70, "创建快捷方式...")
                 self.create_shortcuts()
-                self.update_detail("Shortcuts created successfully ✓")
-            
-            # add path
+
+            # 添加到PATH
             if self.wizard and self.wizard.field("add_to_path"):
-                self.update_status("添加到系统PATH...", 80)
-                self.update_detail("\nAdding to system PATH...")
+                self._current_operation = "添加PATH"
+                self.update_progress(80, "添加到系统PATH...")
                 self.add_to_path()
-                self.update_detail("Added to PATH successfully ✓")
-            
-            # cfa
+
+            # 文件关联
             if self.wizard and (self.wizard.field("associate_txt") or 
                               self.wizard.field("associate_log") or 
                               self.wizard.field("associate_tsuki")):
-                self.update_status("创建文件关联...", 90)
-                self.update_detail("\nCreating file associations...")
+                self._current_operation = "文件关联"
+                self.update_progress(90, "创建文件关联...")
                 self.create_file_associations()
-                self.update_detail("File associations created successfully ✓")
-            # youjian caidan
+
+            # 添加右键菜单
             if self.wizard and self.wizard.field("add_context_menu"):
-                self.update_status("添加右键菜单...", 95)
-                self.update_detail("\nAdding context menu...")
+                self._current_operation = "添加右键菜单"
+                self.update_progress(95, "添加右键菜单...")
                 self.add_context_menu()
-                self.update_detail("Context menu added successfully ✓")
-            
-            self.update_status("安装完成!", 100)
-            self.update_detail("\nInstallation completed successfully! ✓")
-            self.update_detail("Thank you for using TsukiNotes!\n")
-            self.installation_complete()
-            
+
+            self.update_progress(100, "安装完成!")
+            self.installation_completed.emit()
+
         except Exception as e:
-            if not (self.install_page and self.install_page.is_cancelling):
-                self.error_occurred.emit(str(e))
-            return
-        finally:
-            # 确保在线程结束时重置状态
-            if self.install_page:
-                self.install_page.installation_in_progress = False
+            if not self._is_cancelled:
+                error_msg = f"安装失败: 在{self._current_operation}时发生错误: {str(e)}"
+                self.error_occurred.emit(error_msg)
+                self.cleanup_on_error()
 
-    def update_status(self, message, progress):
-        self.status_updated.emit(message, progress)
+    def get_latest_version(self):
+        """获取新版本号"""
+        try:
+            version_url = "http://zzbuaoye.us.kg/TsukiNotes/version.txt"
+            response = requests.get(version_url, timeout=10)
+            response.raise_for_status()
 
-    def update_detail(self, message):
-        self.detail_updated.emit(message)
+            for line in response.text.splitlines():
+                if line.startswith("version:"):
+                    return line.split(":")[1].strip()
+            raise ValueError("无法解析版本信息")
+        except Exception as e:
+            raise Exception(f"获取版本信息失败: {str(e)}")
 
-    def installation_complete(self):
-        self.installation_completed.emit()
-
-    def download_with_progress(self, url, dest_path):
+    def download_package(self, version):
+        """下载安装包"""
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                response = requests.get(url, stream=True, headers=headers, timeout=30)
-                response.raise_for_status()
-                total_size = int(response.headers.get('content-length', 0))
+        download_url = (
+            f"https://github.com/buaoyezz/TsukiNotes/releases/download/"
+            f"TsukiNotesV{version}/"
+            f"TsukiNotesVer{version}.Release_x64_Windows.zip"
+        )
+        temp_zip = os.path.join(tempfile.gettempdir(), "TsukiNotes.zip")
+
+        try:
+            response = requests.get(download_url, stream=True, headers=headers, timeout=30)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+
+            if total_size < 1000000:  # 文件太小
+                raise ValueError("下载文件大小异常")
+
+            self.update_detail(f"下载大小: {total_size/(1024*1024):.1f} MB")
+            
+            block_size = 8192
+            downloaded = 0
+            
+            with open(temp_zip, 'wb') as f:
+                start_time = time.time()
+                for chunk in response.iter_content(block_size):
+                    if self._is_cancelled:
+                        return
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        progress = int(30 + (downloaded / total_size) * 20)
+                        elapsed_time = time.time() - start_time
+                        speed = downloaded / (1024 * 1024 * elapsed_time) if elapsed_time > 0 else 0
+                        
+                        status_msg = f"下载中... {downloaded/(1024*1024):.1f}MB/{total_size/(1024*1024):.1f}MB"
+                        detail_msg = f"{status_msg} ({speed:.1f}MB/s)"
+                        
+                        self.update_progress(progress, status_msg)
+                        self.update_detail(detail_msg)
+
+            if os.path.getsize(temp_zip) != total_size:
+                raise ValueError("下载文件不完整")
+
+            self.update_detail("✓ 下载完成")
+
+        except Exception as e:
+            if os.path.exists(temp_zip):
+                os.remove(temp_zip)
+            raise Exception(f"下载失败: {str(e)}")
+
+    def extract_files(self):
+        """解压文件"""
+        temp_zip = os.path.join(tempfile.gettempdir(), "TsukiNotes.zip")
+        try:
+            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                total_files = len(zip_ref.namelist())
+                extracted_files = 0
                 
-                if total_size < 1000000:  # file too small
-                    raise ValueError("下载文件大小异常")
-                
-                self.update_detail(f"Total size: {total_size/(1024*1024):.1f} MB")
-                
-                block_size = 8192
-                downloaded = 0
-                
-                with open(dest_path, 'wb') as f:
-                    start_time = time.time()
-                    for chunk in response.iter_content(block_size):
-                        if self.install_page and self.install_page.is_cancelling:
-                            return
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            progress = int(30 + (downloaded / total_size) * 20)
-                            elapsed_time = time.time() - start_time
-                            speed = downloaded / (1024 * 1024 * elapsed_time) if elapsed_time > 0 else 0
-                            
-                            self.update_status(
-                                f"下载中... {downloaded/(1024*1024):.1f}MB/{total_size/(1024*1024):.1f}MB",
-                                progress
-                            )
-                            self.update_detail(
-                                f"Downloading... {downloaded/(1024*1024):.1f}MB/{total_size/(1024*1024):.1f}MB "
-                                f"({speed:.1f}MB/s)"
-                            )
-                
-                # 验证下载完整性
-                if os.path.getsize(dest_path) != total_size:
-                    raise ValueError("下载文件不完整")
+                # 首先解压主程序文件
+                for file in zip_ref.namelist():
+                    if self._is_cancelled:
+                        return
+                        
+                    # 解压文件
+                    zip_ref.extract(file, self.install_path)
+                    extracted_files += 1
                     
-                self.update_detail("Download completed ✓")
-                break
+                    # 更新进度
+                    progress = int(50 + (extracted_files / total_files) * 20)
+                    status_msg = f"解压中... {extracted_files}/{total_files} 个文件"
+                    self.update_progress(progress, status_msg)
+                    self.update_detail(f"正在解压: {file}")
+                    
+                    # 如果是ui目录下的文件，确保目录存在
+                    if 'tsuki/ui/' in file:
+                        ui_dir = os.path.join(self.install_path, 'tsuki', 'ui')
+                        if not os.path.exists(ui_dir):
+                            os.makedirs(ui_dir, exist_ok=True)
+                        self.update_detail(f"✓ 已创建UI目录: {ui_dir}")
                 
-            except Exception as e:
-                retry_count += 1
-                if retry_count == max_retries:
-                    self.error_occurred.emit(f"下载失败: {str(e)}")  # 发送错误信号
-                    return
-                self.update_detail(f"\nRetrying download... ({retry_count}/{max_retries})")
-                time.sleep(2)
+                # 检查并创建__pycache__目录
+                pycache_dir = os.path.join(self.install_path, 'tsuki', 'ui', '__pycache__')
+                if not os.path.exists(pycache_dir):
+                    os.makedirs(pycache_dir, exist_ok=True)
+                    self.update_detail(f"✓ 已创建缓存目录: {pycache_dir}")
+
+            self.update_detail("✓ 解压完成")
+            os.remove(temp_zip)
+
+        except Exception as e:
+            raise Exception(f"解压失败: {str(e)}")
 
     def create_shortcuts(self):
+        """创建快捷方式"""
         try:
-            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-            
-            # 创建桌面快捷方式
             shell = win32com.client.Dispatch("WScript.Shell")
-            shortcut = shell.CreateShortCut(os.path.join(desktop, "TsukiNotes.lnk"))
-            shortcut.Targetpath = os.path.join(self.install_path, "TsukiNotes.exe")
-            shortcut.WorkingDirectory = self.install_path
-            shortcut.IconLocation = os.path.join(self.install_path, "TsukiNotes.exe")
-            shortcut.save()
-            self.update_detail("Desktop shortcut created")
             
+            # 获取实际的exe路径
+            version_folder = next(f for f in os.listdir(self.install_path) 
+                                if f.startswith("TsukiNotesVer") and f.endswith("Windows"))
+            exe_path = os.path.join(self.install_path, version_folder, "TsukiNotes.exe")
+            working_dir = os.path.join(self.install_path, version_folder)
+            
+            if not os.path.exists(exe_path):
+                raise FileNotFoundError(f"找不到程序文件: {exe_path}")
+            
+            # 在安装目录创建主快捷方式
+            main_shortcut_path = os.path.join(self.install_path, "TsukiNotes.lnk")
+            main_shortcut = shell.CreateShortCut(main_shortcut_path)
+            main_shortcut.Targetpath = exe_path
+            main_shortcut.WorkingDirectory = working_dir
+            main_shortcut.IconLocation = exe_path
+            main_shortcut.save()
+            self.update_detail("✓ 已在安装目录创建快捷方��")
+            
+            # 复制到桌面
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            desktop_shortcut = os.path.join(desktop, "TsukiNotes.lnk")
+            shutil.copy2(main_shortcut_path, desktop_shortcut)
+            self.update_detail("✓ 已复制快捷方式到桌面")
+            
+            # 复制到开始菜单
             start_menu = os.path.join(os.environ["APPDATA"], 
                                     "Microsoft", "Windows", "Start Menu", "Programs")
-            start_menu_shortcut = shell.CreateShortCut(
-                os.path.join(start_menu, "TsukiNotes.lnk"))
-            start_menu_shortcut.Targetpath = os.path.join(self.install_path, "TsukiNotes.exe")
-            start_menu_shortcut.WorkingDirectory = self.install_path
-            start_menu_shortcut.IconLocation = os.path.join(self.install_path, "TsukiNotes.exe")
-            start_menu_shortcut.save()
-            self.update_detail("Start menu shortcut created")
-            
+            start_menu_shortcut = os.path.join(start_menu, "TsukiNotes.lnk")
+            shutil.copy2(main_shortcut_path, start_menu_shortcut)
+            self.update_detail("✓ 已复制快捷方式到开始菜单")
+
         except Exception as e:
             raise Exception(f"创建快捷方式失败: {str(e)}")
 
     def add_to_path(self):
+        """添加到系统PATH"""
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
                                r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
                                0, winreg.KEY_ALL_ACCESS)
-            
+
             path_value, _ = winreg.QueryValueEx(key, "Path")
             if self.install_path not in path_value:
                 new_path = path_value + ";" + self.install_path
                 winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
-                self.update_detail("Added to system PATH")
-            
+                self.update_detail("✓ 已添加到系统PATH")
+
             winreg.CloseKey(key)
-            
+
         except Exception as e:
             raise Exception(f"添加到系统PATH失败: {str(e)}")
 
     def create_file_associations(self):
+        """创建文件关联"""
         try:
             extensions = []
             if self.wizard.field("associate_txt"):
-                extensions.append(".txt")
+                extensions.append((".txt", "文本文件"))
             if self.wizard.field("associate_log"):
-                extensions.append(".log")
+                extensions.append((".log", "日志文件"))
             if self.wizard.field("associate_tsuki"):
-                extensions.append(".tsuki")
-            
-            for ext in extensions:
+                extensions.append((".tsuki", "TsukiNotes笔记"))
+
+            for ext, desc in extensions:
+                # 创建文件类型注册表项
                 with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, ext) as key:
-                    winreg.SetValue(key, "", winreg.REG_SZ, "TsukiNotes.Document")
-                self.update_detail(f"Associated {ext} files")
-            
-            if extensions:
-                with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, "TsukiNotes.Document") as key:
-                    winreg.SetValue(key, "", winreg.REG_SZ, "TsukiNotes文档")
+                    winreg.SetValue(key, "", winreg.REG_SZ, f"TsukiNotes{ext}")
+
+                with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, f"TsukiNotes{ext}") as key:
+                    winreg.SetValue(key, "", winreg.REG_SZ, desc)
+                    # 设置图标
                     with winreg.CreateKey(key, "DefaultIcon") as icon_key:
                         winreg.SetValue(icon_key, "", winreg.REG_SZ, 
-                                      f"{os.path.join(self.install_path, 'TsukiNotes.exe')},0")
+                                      f'"{os.path.join(self.install_path, "TsukiNotes.exe")}"')
+                    # 设置打开命令
                     with winreg.CreateKey(key, "shell\\open\\command") as cmd_key:
-                        winreg.SetValue(cmd_key, "", winreg.REG_SZ, 
+                        winreg.SetValue(cmd_key, "", winreg.REG_SZ,
                                       f'"{os.path.join(self.install_path, "TsukiNotes.exe")}" "%1"')
-                
+
+                self.update_detail(f"✓ 已关联 {ext} 文件")
+
+            # 刷新系统图标缓存
+            os.system("ie4uinit.exe -show")
+
         except Exception as e:
             raise Exception(f"创建文件关联失败: {str(e)}")
 
     def add_context_menu(self):
+        """添加右键菜单"""
         try:
             with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\TsukiNotes") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, "用TsukiNotes打开")
@@ -910,8 +1004,8 @@ class DownloadThread(QThread):
                 with winreg.CreateKey(key, "command") as cmd_key:
                     winreg.SetValue(cmd_key, "", winreg.REG_SZ,
                                   f'"{os.path.join(self.install_path, "TsukiNotes.exe")}" "%1"')
-            self.update_detail("Added context menu integration")
-                    
+            self.update_detail("✓ 已添加右键菜单")
+
         except Exception as e:
             raise Exception(f"添加右键菜单失败: {str(e)}")
 
@@ -919,7 +1013,7 @@ class FinalOptionsPage(QWizardPage):
     def __init__(self):
         super().__init__()
         self.setTitle("附加选项")
-        self.setSubTitle("请选择需要的附加功能")
+        self.setSubTitle("请选择需要的附加功能，您可以点击*返回*按钮查看安装日志")
         
         layout = QVBoxLayout()
         
@@ -934,7 +1028,7 @@ class FinalOptionsPage(QWizardPage):
         self.shortcut_cb.setChecked(True)
         
         self.path_cb.setToolTip("将程序添加到系统环境变量，需要管理员权限")
-        self.context_menu_cb.setToolTip("在右键菜单添加""<用TsukiNotes打开>""选项")
+        self.context_menu_cb.setToolTip("在右键菜单添加*用TsukiNotes打开*选项")
         
         options_layout.addWidget(self.shortcut_cb)
         options_layout.addWidget(self.path_cb)
@@ -942,6 +1036,7 @@ class FinalOptionsPage(QWizardPage):
         
         options_group.setLayout(options_layout)
         
+        # 文件关联组
         association_group = QGroupBox("文件关联")
         association_layout = QVBoxLayout()
         
@@ -957,8 +1052,17 @@ class FinalOptionsPage(QWizardPage):
         
         association_group.setLayout(association_layout)
         
+        # 提示信息
+        tip_label = QLabel(
+            "<p style='color: #666; font-size: 11px;'>"
+            "提示：您可以点击*返回*按钮查看安装日志，"
+            "查看完成后再次点击*下一步*继续安装。</p>"
+        )
+        tip_label.setWordWrap(True)
+        
         layout.addWidget(options_group)
         layout.addWidget(association_group)
+        layout.addWidget(tip_label)
         layout.addStretch()
         
         self.setLayout(layout)
@@ -970,18 +1074,43 @@ class FinalOptionsPage(QWizardPage):
         self.registerField("associate_txt", self.txt_cb)
         self.registerField("associate_log", self.log_cb)
         self.registerField("associate_tsuki", self.tsuki_cb)
+        
+        # 保存选项状态
+        self._saved_states = {}
+        
+    def initializePage(self):
+        """初始化页面时恢复保存的选项状态"""
+        if self._saved_states:
+            self.shortcut_cb.setChecked(self._saved_states.get("create_shortcut", True))
+            self.path_cb.setChecked(self._saved_states.get("add_to_path", False))
+            self.context_menu_cb.setChecked(self._saved_states.get("add_context_menu", False))
+            self.txt_cb.setChecked(self._saved_states.get("associate_txt", False))
+            self.log_cb.setChecked(self._saved_states.get("associate_log", False))
+            self.tsuki_cb.setChecked(self._saved_states.get("associate_tsuki", True))
+            
+    def cleanupPage(self):
+        """离开页面时保存选项状态"""
+        self._saved_states = {
+            "create_shortcut": self.shortcut_cb.isChecked(),
+            "add_to_path": self.path_cb.isChecked(),
+            "add_context_menu": self.context_menu_cb.isChecked(),
+            "associate_txt": self.txt_cb.isChecked(),
+            "associate_log": self.log_cb.isChecked(),
+            "associate_tsuki": self.tsuki_cb.isChecked()
+        }
+        super().cleanupPage()
 
 class CompletePage(QWizardPage):
     def __init__(self):
         super().__init__()
         self.setTitle("安装完成")
-        self.setSubTitle("TsukiNotes 已成功装到您的计算机")
+        self.setSubTitle("TsukiNotes 已成功安装到您的计算机")
         
         layout = QVBoxLayout()
         
-        # done icon
+        # 完成图标
         complete_label = QLabel()
-        complete_url = "https://img.picui.cn/free/2024/10/26/671ccb6079547.png"  # 替换为实际的图床URL
+        complete_url = "https://img.picui.cn/free/2024/10/26/671ccb6079547.png"
         try:
             response = requests.get(complete_url)
             if response.status_code == 200:
@@ -994,18 +1123,32 @@ class CompletePage(QWizardPage):
             
         layout.addWidget(complete_label, alignment=Qt.AlignCenter)
         
-        # done text
+        # 完成文本
         complete_text = QLabel(
-            "安装已完成！\n\n"
-            "您可以在开始菜单或桌面找到 TsukiNotes 的快捷方式\n"
-            "感谢使用 TsukiNotes！\n"
-            "喜欢项目不要忘记给我Star！！！"
+            "<h3>安装已完成！</h3>"
+            "<p>您可以在开始菜单或桌面找到 TsukiNotes 的快捷方式。</p>"
+            "<p>感谢使用 TsukiNotes！如果喜欢这个项目，请别忘了给我一个 Star！</p>"
+            "<p><a href='https://github.com/buaoyezz/TsukiNotes'>访问 GitHub 项目页面</a></p>"
         )
+        complete_text.setOpenExternalLinks(True)
         complete_text.setWordWrap(True)
-        complete_text.setStyleSheet("font-size: 12px; color: #666;")
+        complete_text.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                color: #333;
+                line-height: 1.6;
+            }
+            QLabel a {
+                color: #0366d6;
+                text-decoration: none;
+            }
+            QLabel a:hover {
+                text-decoration: underline;
+            }
+        """)
         layout.addWidget(complete_text)
         
-        # 启动!
+        # 启动选项
         self.launch_cb = QCheckBox("立即启动 TsukiNotes")
         self.launch_cb.setChecked(True)
         layout.addWidget(self.launch_cb)
@@ -1017,56 +1160,26 @@ class CompletePage(QWizardPage):
         if self.launch_cb.isChecked():
             install_path = self.wizard().field("install_path")
             try:
-                # 创建并显示等待对话框
-                wait_dialog = QDialog(self)
-                wait_dialog.setWindowTitle("启动中")
-                wait_dialog.setFixedSize(300, 100)
-                wait_dialog.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+                # 查找实际的exe路径
+                version_folder = next(f for f in os.listdir(install_path) 
+                                   if f.startswith("TsukiNotesVer") and f.endswith("Windows"))
+                program = os.path.join(install_path, version_folder, "TsukiNotes.exe")
                 
-                layout = QVBoxLayout()
-                
-                # 添加等待动画
-                loading_label = QLabel()
-                movie = QMovie()
-                try:
-                    loading_url = "https://ooo.0x0.ooo/2024/10/26/ODXJuB.gif"
-                    response = requests.get(loading_url)
-                    if response.status_code == 200:
-                        temp_gif = os.path.join(tempfile.gettempdir(), "loading_launch.gif")
-                        with open(temp_gif, 'wb') as f:
-                            f.write(response.content)
-                        movie.setFileName(temp_gif)
-                except:
-                    pass
+                if not os.path.exists(program):
+                    raise FileNotFoundError("找不到程序文件")
                     
-                loading_label.setMovie(movie)
-                movie.start()
+                # 使用subprocess启动程序
+                import subprocess
+                subprocess.Popen([program], 
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                               cwd=os.path.dirname(program))  # 设置工作目录
                 
-                message = QLabel("正在启动 TsukiNotes，请稍候...")
-                message.setAlignment(Qt.AlignCenter)
-                message.setStyleSheet("font-size: 12px; color: #666;")
-                
-                layout.addWidget(loading_label, alignment=Qt.AlignCenter)
-                layout.addWidget(message)
-                wait_dialog.setLayout(layout)
-                
-                # 创建启动线程
-                launch_thread = QThread()
-                def launch_app():
-                    os.startfile(os.path.join(install_path, "TsukiNotes.exe"))
-                    wait_dialog.accept()
-                
-                launch_thread.run = launch_app
-                launch_thread.start()
-                
-                # 显示对话框，最多等待10秒
-                result = wait_dialog.exec_()
-                
-                if result != QDialog.Accepted:
-                    QMessageBox.warning(self, "启动超时", "TsukiNotes 启动时间过长，请手动启动程序")
+                return True
                 
             except Exception as e:
-                QMessageBox.warning(self, "启动失败", f"无法启动 TsukiNotes: {str(e)}")
+                QMessageBox.warning(self, "启动失败", 
+                    f"无法启动 TsukiNotes: {str(e)}\n"
+                    "请手动启动程序。")
         return True
 
 def main():

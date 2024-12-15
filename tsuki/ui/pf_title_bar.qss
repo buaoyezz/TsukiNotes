@@ -1,0 +1,16 @@
+QFrame {
+    background-color: #202020;
+    color: white;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+QPushButton {
+    border: none;
+    background-color: transparent;
+    color: white;
+    padding: 5px;
+    border-radius: 5px;
+}
+QPushButton:hover {
+    background-color: #3a3a3a;
+} 

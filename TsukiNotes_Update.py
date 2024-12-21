@@ -1,7 +1,7 @@
 #==================================
 # Install Lite For TsukiNotes
 # Lite Version ≠ Wizard
-# B1.0.0
+# B1.1.0
 #==================================
 
 from itertools import zip_longest
@@ -14,12 +14,14 @@ import requests
 import zipfile
 import argparse
 import logging
+import time
 from pathlib import Path
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import win32com.client
 import concurrent.futures
+import threading
 
 
 def is_admin():
@@ -41,19 +43,28 @@ def run_as_admin():
             print(f"请求管理员权限失败: {e}")
             sys.exit(1)
 
-run_as_admin()
-
 def check_version():
     try:
-        version_url = "http://zzbuaoye.us.kg/TsukiNotes/version.txt"
-        response = requests.get(version_url, timeout=10)
+        api_url = 'https://api.github.com/repos/buaoyezz/TsukiNotes/releases'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        
+        response = requests.get(api_url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        for line in response.text.splitlines():
-            if line.startswith("version:"):
-                return line.split(":")[1].strip()
+        releases = response.json()
+        if releases:
+            latest_release = releases[0]  # 获取最新发布
+            tag_name = latest_release.get('tag_name', '')
+            if tag_name.startswith('TsukiNotesV'):
+                version = tag_name[10:]  # 移除 'TsukiNotesV' 前缀
+                # 如果版本号以'V'开头,移除它
+                if version.startswith('V'):
+                    version = version[1:]
+                return version
         return None
-    except:
+    except Exception:
         return None
 
 def get_current_version(install_path):
@@ -70,9 +81,17 @@ def get_current_version(install_path):
     return None
 
 def compare_versions(current_version, latest_version):
-    current_parts = map(int, (current_version or '0').split('.'))
-    latest_parts = map(int, (latest_version or '0').split('.'))
-    return any(l > c for l, c in zip_longest(latest_parts, current_parts, fillvalue=0))
+    if not current_version or not latest_version:
+        return True
+    current_parts = [int(x) for x in current_version.split('.')]
+    latest_parts = [int(x) for x in latest_version.split('.')]
+    
+    for c, l in zip_longest(current_parts, latest_parts, fillvalue=0):
+        if l > c:
+            return True
+        elif l < c:
+            return False
+    return False
 
 class InstallerWizard(QWizard):
     def __init__(self, silent_mode=False):
@@ -92,29 +111,67 @@ class InstallerWizard(QWizard):
         
         self.install_path = os.getcwd()
         
+        # 更新样式表
         self.setStyleSheet("""
             QWizard, QWizardPage {
-                background-color: white;
+                background-color: #f0f0f0;
                 font-family: "Microsoft YaHei";
             }
+            
             QPushButton {
-                background-color: #60CDFF;
-                color: black;
+                background-color: #ffffff;
+                color: #333333;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-family: "Microsoft YaHei";
+                padding: 10px 20px;
+                border-radius: 8px;
+                font-weight: 500;
             }
+            
             QPushButton:hover {
-                background-color: #99E5FF;
+                background-color: #f5f5f5;
             }
+            
+            QPushButton:pressed {
+                background-color: #e0e0e0;
+            }
+            
+            QProgressBar {
+                border: none;
+                background-color: #ffffff;
+                border-radius: 10px;
+                height: 20px;
+                text-align: center;
+            }
+            
+            QProgressBar::chunk {
+                background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #60CDFF, stop:1 #99E5FF);
+                border-radius: 10px;
+            }
+            
             QLineEdit, QTextEdit {
-                padding: 6px;
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                font-family: "Microsoft YaHei";
+                padding: 8px;
+                background-color: #ffffff;
+                border: none;
+                border-radius: 8px;
             }
         """)
+        
+        # 为所有按钮添加阴影效果
+        for button in self.findChildren(QPushButton):
+            shadow = QGraphicsDropShadowEffect(self)
+            shadow.setBlurRadius(15)
+            shadow.setXOffset(3)
+            shadow.setYOffset(3)
+            shadow.setColor(QColor(0, 0, 0, 30))
+            button.setGraphicsEffect(shadow)
+        
+        # 添加窗口渐变动画效果
+        self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_animation.setDuration(300)
+        self.fade_animation.setStartValue(0)
+        self.fade_animation.setEndValue(1)
+        self.fade_animation.start()
         
         self.addPage(InstallProgressPage())
         
@@ -128,7 +185,10 @@ class InstallerWizard(QWizard):
     def cancel_installation(self):
         temp_path = os.path.join(os.environ["TEMP"], "TsukiNotes.zip")
         if os.path.exists(temp_path):
-            os.remove(temp_path)
+            try:
+                os.remove(temp_path)
+            except:
+                pass
         QApplication.quit()
 
     def closeEvent(self, event):
@@ -165,9 +225,23 @@ class InstallProgressPage(QWizardPage):
         self.updateProgress.connect(self.update_progress)
         self.installationComplete.connect(self.handle_installation_complete)
         self.logMessage.connect(self.append_log)
+        
+        # 为进度条添加阴影效果
+        progress_shadow = QGraphicsDropShadowEffect(self)
+        progress_shadow.setBlurRadius(10)
+        progress_shadow.setXOffset(0)
+        progress_shadow.setYOffset(2)
+        progress_shadow.setColor(QColor(0, 0, 0, 30))
+        self.progress.setGraphicsEffect(progress_shadow)
+        
+        # 添加进度条动画
+        self.progress_animation = QPropertyAnimation(self.progress, b"value")
+        self.progress_animation.setDuration(300)
+        self.progress_animation.setEasingCurve(QEasingCurve.OutCubic)
     
     def closeEvent(self, event):
         if self.thread and self.thread.isRunning():
+            self.worker.stop()
             self.worker.progress.disconnect()
             self.worker.finished.disconnect()
             self.worker.log.disconnect()
@@ -191,6 +265,7 @@ class InstallProgressPage(QWizardPage):
 
     def start_installation_thread(self):
         if self.thread and self.thread.isRunning():
+            self.worker.stop()
             self.worker.progress.disconnect()
             self.worker.finished.disconnect()
             self.worker.log.disconnect()
@@ -209,12 +284,26 @@ class InstallProgressPage(QWizardPage):
         self.thread.start()
 
     def update_progress(self, value, status):
-        self.progress.setValue(value)
-        self.status_label.setText(status)
+        # 使用动画更新进度条
+        self.progress_animation.setStartValue(self.progress.value())
+        self.progress_animation.setEndValue(value)
+        self.progress_animation.start()
+        
+        # 状态文本更新动画
+        self.status_label.setText(f"| {status}")
+        fade = QGraphicsOpacityEffect(self.status_label)
+        self.status_label.setGraphicsEffect(fade)
+        
+        fade_anim = QPropertyAnimation(fade, b"opacity")
+        fade_anim.setDuration(200)
+        fade_anim.setStartValue(0)
+        fade_anim.setEndValue(1)
+        fade_anim.start()
 
     def handle_worker_finished(self, success, message):
         self.installationComplete.emit(success, message)
         if self.thread:
+            self.worker.stop()
             self.worker.progress.disconnect()
             self.worker.finished.disconnect()
             self.worker.log.disconnect()
@@ -271,7 +360,7 @@ class InstallationWorker(QObject):
             self.log.emit("开始更新检查...")
             logging.debug("Welcome To TsukiNotes Update Installer")
             logging.debug("===============================================")
-            logging.debug("The Install Tool Version: 1.0.0")
+            logging.debug("The Install Tool Version: 1.1.0")
             logging.debug("SoftWare Initializing...")
             logging.debug("SoftWare By ZZBuAoYe")
             logging.debug("Enjoy TsukiNotes!")
@@ -334,38 +423,185 @@ class InstallationWorker(QObject):
 
     def download_package(self, version):
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            download_url = (
-                f"https://github.com/buaoyezz/TsukiNotes/releases/download/"
-                f"TsukiNotesV{version}/"
-                f"TsukiNotesVer{version}.Release_x64_Windows.zip"
-            )
-            self.log.emit(f"Start Download: {download_url}")
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(requests.get, download_url, headers=headers)
-                response = future.result()
-            response.raise_for_status()
+            # 清除上次的日志文件
+            log_file = os.path.join(self.install_path, "tsuki_update.log")
+            if os.path.exists(log_file):
+                try:
+                    os.remove(log_file)
+                except:
+                    pass
+                
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/octet-stream'
+            }
             
+            download_urls = [
+                (f"https://github.com/buaoyezz/TsukiNotes/releases/download/"
+                 f"TsukiNotesV{version}/"
+                 f"TsukiNotesVer{version}.Release_x64_Windows.zip"),
+                (f"https://kkgithub.com/buaoyezz/TsukiNotes/releases/download/"
+                 f"TsukiNotesV{version}/"
+                 f"TsukiNotesVer{version}.Release_x64_Windows.zip")
+            ]
+
             temp_path = os.path.join(os.environ["TEMP"], "TsukiNotes.zip")
-            with open(temp_path, "wb") as f:
-                f.write(response.content)
-            self.log.emit(f"Download Completed,Save To: {temp_path}")
+            
+            for url in download_urls:
+                try:
+                    self.log.emit(f"尝试从 {url} 下载...")
+                    self.progress.emit(30, f"正在下载...")
+                    
+                    # 使用 GET 请求而不是 HEAD 请求来获取文件大小
+                    response = requests.get(url, headers=headers, stream=True, timeout=10)
+                    response.raise_for_status()
+                    total_size = int(response.headers.get('content-length', 0))
+                    
+                    if total_size == 0:
+                        # 如果无法获取文件大小，尝试直接下载
+                        content = response.content
+                        if len(content) > 0:
+                            with open(temp_path, 'wb') as f:
+                                f.write(content)
+                            self.log.emit(f"下载完成，文件保存至: {temp_path}")
+                            return
+                        else:
+                            raise Exception("无法获取文件内容")
+                    
+                    # 多线程下载部分
+                    chunk_size = max(total_size // 16, 1024 * 1024)  # 确保每个分块至少1MB
+                    chunks = []
+                    for i in range(0, total_size, chunk_size):
+                        end = min(i + chunk_size - 1, total_size - 1)
+                        chunks.append((i, end))
+                    
+                    downloaded = [0]
+                    start_time = time.time()
+                    
+                    def download_chunk(start, end):
+                        chunk_headers = headers.copy()
+                        chunk_headers['Range'] = f'bytes={start}-{end}'
+                        retry_count = 3
+                        
+                        while retry_count > 0:
+                            try:
+                                response = requests.get(url, headers=chunk_headers, timeout=30)
+                                response.raise_for_status()
+                                return start, response.content
+                            except Exception as e:
+                                retry_count -= 1
+                                if retry_count == 0:
+                                    raise e
+                                time.sleep(1)
+                    
+                    # 创建临时文件
+                    with open(temp_path, 'wb') as f:
+                        f.truncate(total_size)
+                    
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                        future_to_chunk = {executor.submit(download_chunk, start, end): (i, start, end) 
+                                         for i, (start, end) in enumerate(chunks)}
+                        
+                        for future in concurrent.futures.as_completed(future_to_chunk):
+                            try:
+                                start, data = future.result()
+                                with open(temp_path, 'rb+') as f:
+                                    f.seek(start)
+                                    f.write(data)
+                                
+                                downloaded[0] += len(data)
+                                percent = (downloaded[0] / total_size) * 100
+                                speed = downloaded[0] / (1024 * 1024 * max(time.time() - start_time, 0.1))
+                                
+                                status = (f"下载中... {percent:.1f}% | {speed:.1f} MB/s | "
+                                        f"{downloaded[0]/(1024*1024):.1f}MB/{total_size/(1024*1024):.1f}MB")
+                                
+                                self.progress.emit(30 + int(percent * 0.3), status)
+                                
+                            except Exception as e:
+                                raise Exception(f"下载失败: {str(e)}")
+                    
+                    # 验证文件大小
+                    if os.path.getsize(temp_path) != total_size:
+                        raise Exception("文件下载不完整")
+                    
+                    self.log.emit(f"下载完成，文件保存至: {temp_path}")
+                    return
+                    
+                except Exception as e:
+                    self.log.emit(f"从 {url} 下载失败: {str(e)}")
+                    continue
+                    
+            raise Exception("所有下载源均失败")
                 
         except Exception as e:
-            raise Exception(f"Download Failed: {str(e)}")
+            raise Exception(f"下载失败: {str(e)}")
 
     def extract_and_overwrite_files(self, install_path):
         try:
             temp_path = os.path.join(os.environ["TEMP"], "TsukiNotes.zip")
-            self.log.emit(f"Extracting and Overwriting Files: {temp_path}")
+            self.log.emit(f"正在验证下载文件...")
+            
+            # 验证文件是否存在且大小不为0
+            if not os.path.exists(temp_path):
+                raise Exception("下载文件不存在")
+            
+            if os.path.getsize(temp_path) == 0:
+                raise Exception("下载文件大小为0")
+                
+            # 验证ZIP文件格式
+            try:
+                with open(temp_path, 'rb') as f:
+                    magic_number = f.read(4)
+                    if magic_number != b'PK\x03\x04':
+                        raise Exception("文件格式错误，不是效的ZIP文件")
+            except Exception as e:
+                raise Exception(f"文件验证失败: {str(e)}")
+                
+            # 尝试打开并验证ZIP文件
+            try:
+                with zipfile.ZipFile(temp_path, 'r') as test_zip:
+                    # 测试ZIP文件完整性
+                    test_result = test_zip.testzip()
+                    if test_result is not None:
+                        raise Exception(f"ZIP文件损坏，首个错误文件: {test_result}")
+            except zipfile.BadZipFile:
+                raise Exception("无效的ZIP文件格式")
+                
+            self.log.emit("文件验证通过，开始解压...")
+            
+            # 解压文件
             with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                total_files = len(zip_ref.namelist())
+                extracted_files = 0
+                
                 for file in zip_ref.namelist():
-                    zip_ref.extract(file, install_path)
-                    self.log.emit(f"Extracted: {file}")
-            os.remove(temp_path)
-            self.log.emit("Template Files Extracted And Overwritten Successfully")
+                    try:
+                        zip_ref.extract(file, install_path)
+                        extracted_files += 1
+                        progress = (extracted_files / total_files) * 100
+                        self.progress.emit(60 + int(progress * 0.2), f"正在解压: {progress:.1f}% | {file}")
+                        self.log.emit(f"已解压: {file}")
+                    except Exception as e:
+                        raise Exception(f"解压文件 {file} 失败: {str(e)}")
+                        
+            # 清理临时文件
+            try:
+                os.remove(temp_path)
+                self.log.emit("临时文件已清理")
+            except Exception as e:
+                self.log.emit(f"清理临时文件失败（非致命错误）: {str(e)}")
+                
+            self.log.emit("文件解压完成")
+            
         except Exception as e:
-            raise Exception(f"Extract and Overwrite Files Failed: {str(e)}")
+            # 确保出错时也清理临时文件
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except:
+                pass
+            raise Exception(f"解压和覆盖文件失败: {str(e)}")
 
     def update_shortcuts(self, install_path):
         try:
@@ -426,15 +662,7 @@ if __name__ == "__main__":
         
         app.setFont(QFont("Microsoft YaHei", 10))
 
-        if not is_admin():
-            if sys.argv[-1] != 'asadmin':
-                script = os.path.abspath(sys.argv[0])
-                params = ' '.join([script] + sys.argv[1:] + ['asadmin'])
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
-                sys.exit()
-            else:
-                QMessageBox.critical(None, "错误", "无法获取管理员权限")
-                sys.exit(1)
+        run_as_admin()
         
         wizard = InstallerWizard(silent_mode=False)  # 默认非静默模式
         app.aboutToQuit.connect(wizard.close)

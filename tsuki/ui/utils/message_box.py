@@ -7,7 +7,7 @@ from PyQt5.QtGui import QColor, QFont, QTransform
 class ClutMessageBox(QDialog):
     def __init__(self, parent=None, title="提示", text="", buttons=["确定"]):
         super().__init__(parent)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
         # 初始化结果
@@ -91,7 +91,7 @@ class ClutMessageBox(QDialog):
         button_container.setSpacing(10)
         button_container.addStretch()
         
-        # 创建按钮
+        # 创建按���
         self.buttons = []
         def create_click_handler(btn_text):
             def handler():

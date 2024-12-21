@@ -12,9 +12,9 @@ class ClutCard(QFrame):
         
     def setup_ui(self, title, msg):
         # 主布局
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setSpacing(16)
         
         # 标题容器
         title_container = QHBoxLayout()
@@ -79,9 +79,9 @@ class ClutCard(QFrame):
         content_container.addWidget(msg_label)
         
         # 添加到主布局
-        layout.addWidget(title_frame)
-        layout.addLayout(content_container)
-        layout.addStretch()
+        self.main_layout.addWidget(title_frame)
+        self.main_layout.addLayout(content_container)
+        self.main_layout.addStretch()
         
         # 卡片样式
         self.setStyleSheet("""
@@ -130,4 +130,19 @@ class ClutCard(QFrame):
         
     def leaveEvent(self, event):
         self.setCursor(Qt.ArrowCursor)
-        super().leaveEvent(event) 
+        super().leaveEvent(event)
+        
+    def setContentLayout(self, layout):
+        # 移除旧的布局中的所有项目
+        while self.main_layout.count():
+            item = self.main_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                while item.layout().count():
+                    sub_item = item.layout().takeAt(0)
+                    if sub_item.widget():
+                        sub_item.widget().deleteLater()
+        
+        # 添加新的布局
+        self.main_layout.addLayout(layout)

@@ -8,17 +8,21 @@ class CrashReport:
     @staticmethod
     def crash_report():
         try:
-            # 获取当前目录
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            crash_report_path = os.path.join(current_dir, '..', '..', 'CrashReport.exe')
+            # 直接使用列表存储可能的文件名
+            possible_files = ['CrashReport.exe', 'CrashReport.py']
+            crash_report_path = None
             
-            # 检查文件是否存在
-            if not os.path.exists(crash_report_path):
-                # 如果exe不存在,尝试查找py文件
-                crash_report_path = os.path.join(current_dir, '..', '..', 'CrashReport.py')
-                if not os.path.exists(crash_report_path):
-                    logger.error(f"崩溃报告程序不存在: {crash_report_path}")
-                    return
+            # 遍历查找存在的文件
+            for file_name in possible_files:
+                path = os.path.join(current_dir, '..', '..', file_name)
+                if os.path.exists(path):
+                    crash_report_path = path
+                    break
+                    
+            if not crash_report_path:
+                logger.error("未找到崩溃报告程序")
+                return
                 
             # 使用subprocess.Popen静默运行
             startupinfo = subprocess.STARTUPINFO()

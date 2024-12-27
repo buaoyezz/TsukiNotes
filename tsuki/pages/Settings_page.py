@@ -772,15 +772,17 @@ class SettingsWindow(QDialog):
             shadow_anim.setEndValue(5)
             
             curr_geo = button.geometry()
-            # 修复：确保所有值都是整数
-            new_rect = QRect(
-                int(curr_geo.x() + 2),
-                int(curr_geo.y() + 2),
-                int(curr_geo.width() * 0.98),
-                int(curr_geo.height() * 0.98)
-            )
+            # 添加弹性缩放效果
             scale_anim.setStartValue(curr_geo)
-            scale_anim.setEndValue(new_rect)
+            scale_anim.setEndValue(QRect(
+                int(curr_geo.x() + 2),
+                int(curr_geo.y() + 2), 
+                int(curr_geo.width() * 0.95),
+                int(curr_geo.height() * 0.95)
+            ))
+            # 使用弹性曲线
+            scale_anim.setEasingCurve(QEasingCurve.OutElastic)
+            scale_anim.setDuration(400)  # 增加动画时长
             
             anim_group.start()
         
@@ -790,15 +792,16 @@ class SettingsWindow(QDialog):
             shadow_anim.setEndValue(15)
             
             curr_geo = button.geometry()
-            # 修复：确保所有值都是整数
-            new_rect = QRect(
+            scale_anim.setStartValue(curr_geo)
+            scale_anim.setEndValue(QRect(
                 int(curr_geo.x() - 2),
                 int(curr_geo.y() - 2),
-                int(curr_geo.width() / 0.98),
-                int(curr_geo.height() / 0.98)
-            )
-            scale_anim.setStartValue(curr_geo)
-            scale_anim.setEndValue(new_rect)
+                int(curr_geo.width() / 0.95),
+                int(curr_geo.height() / 0.95)
+            ))
+            # 使用弹性曲线
+            scale_anim.setEasingCurve(QEasingCurve.OutBounce)
+            scale_anim.setDuration(500)  # 增加动画时长
             
             anim_group.start()
         
@@ -811,39 +814,33 @@ class SettingsWindow(QDialog):
         return container
 
     def display(self, index):
-        """优化页面切换动画"""
+        """优化页面切换动画为果冻效果"""
         if self.page_animation and self.page_animation.state() == QPropertyAnimation.Running:
             self.page_animation.stop()
             
-        # 创建动画组
         anim_group = QParallelAnimationGroup()
         
         # 当前页面动画
         old_widget = self.stack.currentWidget()
         if old_widget:
-            # 添加缩放效果
             old_scale = QPropertyAnimation(old_widget, b"geometry")
-            old_scale.setDuration(200)
+            old_scale.setDuration(400)  # 增加动画时长
             old_scale.setStartValue(old_widget.geometry())
             
-            # 修复: 确保所有值都是整数
             old_geo = old_widget.geometry()
-            new_x = int(old_geo.x() - 20)
-            new_width = int(old_geo.width() * 0.95)
             new_rect = QRect(
-                new_x,
+                int(old_geo.x() - 30),  # 增加位移距离
                 old_geo.y(),
-                new_width,
+                int(old_geo.width() * 0.9),  # 增加缩放比例
                 old_geo.height()
             )
             old_scale.setEndValue(new_rect)
-            old_scale.setEasingCurve(QEasingCurve.OutCubic)
+            old_scale.setEasingCurve(QEasingCurve.OutElastic)  # 使用弹性曲线
             
-            # 透明度动画
             fade_out = QPropertyAnimation(old_widget, b"windowOpacity")
             fade_out.setStartValue(1.0)
             fade_out.setEndValue(0.0)
-            fade_out.setDuration(200)
+            fade_out.setDuration(300)
             fade_out.setEasingCurve(QEasingCurve.OutCubic)
             
             anim_group.addAnimation(old_scale)
@@ -854,35 +851,32 @@ class SettingsWindow(QDialog):
         new_widget = self.stack.currentWidget()
         new_widget.setWindowOpacity(0.0)
         
-        # 修复: 同样确保新页面动画使用整数值
         curr_geo = new_widget.geometry()
         init_rect = QRect(
-            int(curr_geo.x() + 20),
+            int(curr_geo.x() + 30),  # 增加初始位移
             curr_geo.y(),
-            int(curr_geo.width() * 0.95),
+            int(curr_geo.width() * 0.9),
             curr_geo.height()
         )
         new_widget.setGeometry(init_rect)
         
-        # 缩放动画
         new_scale = QPropertyAnimation(new_widget, b"geometry")
-        new_scale.setDuration(200)
+        new_scale.setDuration(500)  # 增加动画时长
         new_scale.setStartValue(new_widget.geometry())
         final_rect = QRect(
-            int(curr_geo.x() - 20),
+            curr_geo.x(),
             curr_geo.y(),
-            int(curr_geo.width() / 0.95),
+            curr_geo.width(),
             curr_geo.height()
         )
         new_scale.setEndValue(final_rect)
-        new_scale.setEasingCurve(QEasingCurve.OutCubic)
+        new_scale.setEasingCurve(QEasingCurve.OutBounce)  # 使用弹跳曲线
         
-        # 透明度动画
         fade_in = QPropertyAnimation(new_widget, b"windowOpacity")
         fade_in.setStartValue(0.0)
         fade_in.setEndValue(1.0)
-        fade_in.setDuration(200)
-        fade_in.setEasingCurve(QEasingCurve.OutCubic)
+        fade_in.setDuration(300)
+        fade_in.setEasingCurve(QEasingCurve.InOutQuad)
         
         anim_group.addAnimation(new_scale)
         anim_group.addAnimation(fade_in)

@@ -115,7 +115,7 @@ class AboutPage(QWidget):
         logo_card = ClutImageCard(
             title="TsukiNotes",
             msg=" |基于 PyQt5 的记事本软件 \n |一部分基于ClutUI的UI框架 \n |Powered By ZZBuAoYe",
-            image_url="./tsuki/assets/GUI/resources/GUI/logo.png",
+            image_url="./tsuki/assets/resources/GUI/logo.png",
             image_mode=1,
             image_align="center"
         )

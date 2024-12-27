@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # ===============================================
 # TsukiNotes
-# Copyright (c) 2023-2024 ZZBuAoYe
+# Copyright (c) 2023-2025 ZZBuAoYe
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -110,7 +110,7 @@ class ColoredFormatter(colorlog.ColoredFormatter):
     def format(self, record):
         color = LOG_COLORS.get(record.levelname, 'white')
         formatter = colorlog.ColoredFormatter(
-            '%(log_color)s[%(asctime)s | %(levelname)s] | %(name)s | - %(message)s%(reset)s',
+            '%(log_color)s[%(asctime)s | [%(levelname)s] | %(name)s | - %(message)s%(reset)s',
             datefmt='%Y-%m-%d %H:%M:%S',
             log_colors=LOG_COLORS
         )
@@ -138,7 +138,7 @@ def setup_logging():
     try:
         file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
     except Exception as e:
-        print(f"文件处理错误: {e}")  # 
+        print(f"文件处理错误: {e}") 
         # 如果创建文件处理器失败,尝试使用系统默认编码
         file_handler = logging.FileHandler(log_file_path)
 
@@ -164,7 +164,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # debug mod
-debug_version = '1.1.3Release'
+debug_version = '1.1.4Release'
 logger.info("====================================================================================================================")
 logger.info("╔═══╗╔═══╗╔══╗ ╔╗╔╗╔══╗╔══╗╔╗╔╗╔═══╗")
 logger.info("╚═╗ ║╚═╗ ║║╔╗║ ║║║║║╔╗║║╔╗║║║║║║╔══╝")
@@ -185,7 +185,9 @@ class CustomTextEdit(QTextEdit):
         self.file_path = file_path
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_context_menu)
-        self.setFont(QFont("Microsoft YaHei"))  # Set the font to Microsoft YaHei
+        self.setFont(QFont("Microsoft YaHei")) 
+        self.setAttribute(Qt.WA_TranslucentBackground, True)# 修复语法错误
+        self.setWindowFlags(Qt.FramelessWindowHint)
 
         # Load content from file
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -388,11 +390,44 @@ class HexViewerWidget(QWidget):
         self.search_button.clicked.connect(self.search_hex)
         
     def closeEvent(self, event):
-        # 关闭时停止线程
-        if self.loader_thread and self.loader_thread.isRunning():
-            self.loader_thread.stop()
-            self.loader_thread.wait()  
-        super().closeEvent(event)
+        try:
+            # 关闭主窗口前先关闭所有线程
+            if hasattr(self, 'debug_window') and self.debug_window:
+                self.debug_window.close()
+
+            # 停止所有正在运行的加载器线程
+            for i in range(self.tabWidget.count()):
+                widget = self.tabWidget.widget(i)
+                if hasattr(widget, 'loader_thread') and widget.loader_thread:
+                    widget.loader_thread.stop()
+                    widget.loader_thread.wait()
+
+            # 处理主窗口的标签页
+            for i in range(self.tabWidget.count()):
+                self.tabWidget.setCurrentIndex(i)
+                currentWidget = self.tabWidget.currentWidget()
+                
+                if isinstance(currentWidget, (QTextEdit, QPlainTextEdit)):
+                    content = currentWidget.toPlainText()
+                    if content.strip():  # 如果有内容
+                        n = self.autoSave(content)
+                        if n != 0:
+                            event.ignore()
+                            return
+
+            # 确保所有线程都已经停止
+            import threading
+            for thread in threading.enumerate():
+                if thread is not threading.main_thread():
+                    try:
+                        thread.join(timeout=0.5)
+                    except Exception:
+                        pass
+
+            event.accept()
+        except Exception as e:
+            logger.error(f"[Log/ERROR]Close Event Error: {e}")
+            event.accept()
         
     # 代理方法
     def append_content(self, content):
@@ -593,10 +628,47 @@ class ReNameDialog(QDialog):
     
 # ======================================================以下是TsukiReader的CLass=====================================================
 # ==================================================================================================================================
+from tsuki.pages.TitleBar_page import TitleBar
 class TsukiReader(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        
+        # 保持这些设置以支持圆角
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        # 创建主容器
+        main_container = QWidget()
+        main_layout = QVBoxLayout(main_container)
+        main_layout.setContentsMargins(10, 10, 10, 10)  # 添加边距以显示圆角阴影
+        main_layout.setSpacing(0)
+        
+        # 添加标题栏
+        self.title_bar = TitleBar(self)
+        main_layout.addWidget(self.title_bar)
+        
+        # 创建内容容器
+        content_container = QWidget()
+        content_container.setObjectName("contentContainer")
+        content_container.setStyleSheet("""
+            QWidget#contentContainer {
+                background-color: white;
+
+            }
+        """)
+        
+        # 添加阴影效果
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 60))
+        shadow.setOffset(0, 0)
+        content_container.setGraphicsEffect(shadow)
+        
+        content_layout = QVBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 原有的初始化代码
         app = QApplication.instance()
         font = QFont("Microsoft YaHei")
         font.setPointSize(10)
@@ -605,10 +677,11 @@ class TsukiReader(QMainWindow):
         QMetaType.type("QTextCursor")
         self.before = ''
         with open('VERSION', 'r') as version_file:
-            self.current_version = version_file.read().strip()
-        self.update_Date = '2024/12/21'
-        self.version_td = 'Release'
-        self.version_gj = 'b1-v63d_241221R'
+            lines = version_file.readlines()
+            self.current_version = lines[0].strip().split(':')[1].strip()
+            self.version_td = lines[1].strip().split(':')[1].strip()
+            self.version_gj = lines[2].strip().split(':')[1].strip()
+            self.update_Date = lines[3].strip().split(':')[1].strip()
         self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
         self.load_langs()
 
@@ -643,6 +716,127 @@ class TsukiReader(QMainWindow):
         self.add_tab_button.clicked.connect(self.newFile)
         self.tabWidget.setCornerWidget(self.add_tab_button, Qt.TopRightCorner)
         self.loadAllStyles()
+        
+        # 添加tabWidget到内容容器
+        content_layout.addWidget(self.tabWidget)
+        
+        # 将内容容器添加到主布局
+        main_layout.addWidget(content_container)
+        
+        # 设置主容器为中央部件
+        self.setCentralWidget(main_container)
+
+    def initUI(self):
+        # 移除原来的createMenus()调用
+        self.tabWidget = QTabWidget()
+        self.setCentralWidget(self.tabWidget)
+        
+        # 修改状态栏样式
+        self.statusBar().setStyleSheet("""
+            QStatusBar {
+                background-color: white;
+                border-top: 1px solid #e0e0e0;
+                min-height: 25px;
+                max-height: 25px;
+                padding: 0 8px;
+            }
+            QStatusBar QLabel {
+                font-size: 9pt;
+                color: #666666;
+            }
+        """)
+        
+        # 修改标签页样式
+        self.tabWidget.setStyleSheet("""
+            QTabWidget {
+                background: white;
+                border: none;
+            }
+            QTabWidget::pane {
+                border: none;
+                background: white;
+            }
+            QTabBar::tab {
+                background: #f8f8f8;
+                border: 1px solid #e0e0e0;
+                border-bottom: none;
+                padding: 5px 10px;
+                min-width: 80px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                border-bottom: 2px solid #0078d4;
+            }
+        """)
+        
+        self.debug_window = DebugWindow()
+        self.debug_window.hide()
+        self.createShortcuts()
+        self.defaultFont = QFont("Microsoft YaHei")
+        self.setGeometry(100, 100, 990, 600)
+        self.setWindowTitle('TsukiNotes')
+        self.setWindowIcon(QIcon('./tsuki/assets/resources/GUI/logo.png'))
+        logging.debug("initUI initialization is complete")
+        self.tabWidget.setTabsClosable(True)
+        self.tabWidget.tabCloseRequested.connect(self.closeTab)
+        
+
+        self.text_edit = QPlainTextEdit()
+
+        self.show()
+        self.highlighter = PythonHighlighter(self.highlight_keywords, self.text_edit.document())
+        self.status_label = QLabel()
+        self.statusBar().addPermanentWidget(self.status_label)
+        
+
+        v = sys.argv
+        nv = [i for i in v if i not in ["--debug", "-debug"]]
+        
+        if len(nv) > 1:
+            if os.path.isfile(nv[1]):
+                self.openFile(nv[1])
+                config = configparser.ConfigParser()
+                font_path = './tsuki/assets/app/config/font/tn_font_family.ini'
+                try:
+                    with open(font_path, 'rb') as f:
+                        raw_data = f.read()
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+                    
+                    with open(font_path, 'r', encoding=encoding) as file:
+                        config.read_file(file)
+                    
+                    font_name = config.get('Settings', 'font_family', fallback='').strip()
+                    if not font_name:
+                        font_name = "Microsoft YaHei UI"
+                        
+                    font = QFont(font_name)
+                    self.text_edit.setFont(font)
+                    self.initialize_settings()
+                    logger.info(f"载入{nv[1]}成功")
+                except Exception as e:
+                    logging.error(f"读取字体配置时发生错误: {e}")
+                    font = QFont("Microsoft YaHei UI")
+                    self.text_edit.setFont(font)
+                    self.initialize_settings()
+                    logger.error(f"[Log/ERROR]读取配置文件失败: {e}")
+            else:
+                ClutMessageBox.show_message(self, 'Open File', f'失败了❌❗: 文件{nv[1]}不存在！')
+                self.statusBar().showMessage(f'TsukiOF❌: 文件[{nv[1]}]打开失败！Error:[文件不存在]')
+                logger.error(f"[Log/ERROR]ERROR Init UI Open File: 文件{nv[1]}不存在！")
+                self.newFile()
+        else:
+            self.newFile()
+
+        self.updateStatusLabel()
+
+        currentWidget = self.tabWidget.currentWidget()
+        currentWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        currentWidget.customContextMenuRequested.connect(self.showContextMenu)
+        self.context_menu = QMenu(self)
+        self.loadBackgroundSettings()
+        self.checkFirstRun()
 
     def closeEvent(self, event):
         try:
@@ -714,36 +908,75 @@ class TsukiReader(QMainWindow):
     
     def loadAllStyles(self):
         tab_bar_style = """
-        QTabBar::tab {
-            background-color: #f0f0f0;
-            color: #333333;
-            border: 1px solid #c0c0c0;
-            padding: 5px 10px;
-            margin-right: 2px;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-        }
-        QTabBar::tab:selected, QTabBar::tab:hover {
-            background-color: #ffffff;
-        }
-        QTabBar::tab:selected {
-            border-bottom-color: #ffffff;
-        }
-        QTabBar::close-button {
-            image: url(./tsuki/assets/resources/error.png);
-            subcontrol-position: right;
-        }
-        QTabBar::close-button:hover {
-            image: url(./tsuki/assets/resources/off_file.png);
-        }
-        QPushButton#addTabButton {
-            border: none;
-            background-color: transparent;
-        }
-        QPushButton#addTabButton:hover {
-            background-color: #e0e0e0;
-        }
-        """
+    QTabWidget {
+        background: white;
+    }
+    
+    QTabWidget::pane {
+        border: 1px solid #c0c0c0;
+        background: white;
+        border-radius: 4px;
+    }
+    
+    QTabWidget::tab-bar {
+        background: white;
+        alignment: left;
+    }
+    
+    QTabBar {
+        background: white;
+    }
+    
+    QTabBar::tab {
+        color: #333333;
+        border: 1px solid #c0c0c0;
+        padding: 5px 10px;
+        background: white;
+        margin-right: 2px;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
+    
+    QTabBar::tab:selected, QTabBar::tab:hover {
+        background: white;
+    }
+    
+    QTabBar::tab:selected {
+        border-bottom-color: white;
+    }
+    
+    /* 添加这部分来设置标签栏区域的背景 */
+    QWidget#qt_tabwidget_tabbar {
+        background: white;
+    }
+    
+    QWidget#qt_tabwidget_stackedwidget {
+        background: white;
+    }
+    
+    /* 设置标签页上方空白区域的背景色 */
+    QTabWidget > QWidget {
+        background: white;
+    }
+    
+    QTabBar::close-button {
+        image: url(./tsuki/assets/resources/error.png);
+        subcontrol-position: right;
+    }
+    
+    QTabBar::close-button:hover {
+        image: url(./tsuki/assets/resources/off_file.png);
+    }
+    
+    QPushButton#addTabButton {
+        border: none;
+        background-color: white;
+    }
+    
+    QPushButton#addTabButton:hover {
+        background-color: #e0e0e0;
+    }
+    """
 
         scrollbar_style = ""
         qss_file_path = './tsuki/ui/theme/Main_Scrollbar_Style.qss'
@@ -753,6 +986,16 @@ class TsukiReader(QMainWindow):
         except Exception as e:
             logging.error(f"加载滚动条样式失败: {e}")
             ClutMessageBox.show_message(self, "样式加载错误", f"加载滚动条样式失败: {e}")
+
+        # 添加主窗口样式
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: white;
+            }
+            QWidget {
+                background-color: white;
+            }
+        """)
 
         combined_style = tab_bar_style + scrollbar_style
         self.setStyleSheet(combined_style)
@@ -800,11 +1043,77 @@ class TsukiReader(QMainWindow):
             ClutMessageBox.show_message(self, "样式加载错误", f"加载滚动条样式失败: {e}")
 
     def initUI(self):
+        # 移除原来的createMenus()调用
         self.tabWidget = QTabWidget()
         self.setCentralWidget(self.tabWidget)
-        self.context_menu = QMenu(self)
-        self.createActions()
-        self.createMenus()
+        
+        # 修改状态栏样式,使其与上方对齐
+        self.statusBar().setStyleSheet("""
+            QStatusBar {
+                background-color: rgba(255, 255, 255, 0.95);
+                border: none;
+                border-radius: 10px;
+                margin: 3px 10px;  /* 增加左右边距使其对齐 */
+                margin-top: 0px;
+                margin-bottom: 3px;
+                min-height: 22px;
+                max-height: 22px;
+                padding-right: 10px;  /* 添加右侧内边距 */
+            }
+            QStatusBar QLabel {
+                color: #666666;
+                font-size: 9pt;
+                font-family: "Microsoft YaHei UI";
+                padding: 2px 8px;
+                border-radius: 8px;
+                background: rgba(240, 240, 240, 0.7);
+                margin-right: 4px;  /* 标签之间的间距 */
+            }
+            QStatusBar::item {
+                border: none;
+                border-radius: 8px;
+                margin-right: 2px;  /* 项目之间的间距 */
+            }
+        """)
+        
+        # 为状态栏添加阴影效果
+        status_shadow = QGraphicsDropShadowEffect()
+        status_shadow.setBlurRadius(10)
+        status_shadow.setColor(QColor(0, 0, 0, 30))
+        status_shadow.setOffset(0, 0)
+        self.statusBar().setGraphicsEffect(status_shadow)
+        
+        # 修改主窗口样式以支持圆角
+        self.setStyleSheet("""
+            QMainWindow {
+                background: white;
+                border-radius: 10px;
+            }
+            QTabWidget {
+                background: transparent;
+                border: none;
+            }
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+                border-radius: 10px;
+            }
+            QTabBar::tab {
+                background: rgba(248, 248, 248, 0.9);
+                border: 1px solid #e0e0e0;
+                border-bottom: none;
+                padding: 5px 10px;
+                min-width: 80px;
+                margin-right: 2px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                border-bottom: 2px solid #0078d4;
+            }
+        """)
+        
         self.debug_window = DebugWindow()
         self.debug_window.hide()
         self.createShortcuts()
@@ -893,9 +1202,20 @@ class TsukiReader(QMainWindow):
             return text[start:end].strip()
         return ""
     
-    def onTabChanged(self):
-        self.connectCurrentWidgetSignals()
-        self.updateStatusLabel()
+    def onTabChanged(self, index):
+        if index >= 0:
+            current_tab = self.tabWidget.widget(index)
+            current_file = self.tabWidget.tabText(index)
+            
+            # 如果是文本编辑器标签页
+            if isinstance(current_tab, (QTextEdit, QPlainTextEdit)):
+                if hasattr(current_tab, 'file_path') and current_tab.file_path:
+                    self.title_bar.updatePath(current_tab.file_path)
+                else:
+                    self.title_bar.updatePath(current_file)
+            # 如果是其他类型的标签页
+            else:
+                self.title_bar.updatePath(current_file)
 
     def connectCurrentWidgetSignals(self):
         currentWidget = self.tabWidget.currentWidget()
@@ -1346,12 +1666,21 @@ class TsukiReader(QMainWindow):
                 self.status_label.setText(status_text)
                 self.status_label.setFont(QFont(self.tr("微软雅黑"), 9))
                 
+                # 更新状态栏文本样式
+                self.status_label.setStyleSheet("""
+                    QLabel {
+                        color: #666666;
+                        font-size: 9pt;
+                        padding: 0 4px;
+                    }
+                """)
+                
             except Exception as e:
-                logger.error(self.tr(f"状态栏更新失败: {str(e)}"))
-                self.status_label.setText(self.tr("状态更新失败"))
+                logger.error(f"状态栏更新失败: {str(e)}")
+                self.status_label.setText("状态更新失败")
         else:
-            self.status_label.setText(self.tr("无活动标签页"))
-            logger.warning(self.tr("当前没有活动的标签页"))
+            self.status_label.setText("无活动标签页")
+            logger.warning("当前没有活动的标签页")
 
 
     def textChanged(self):
@@ -1589,7 +1918,7 @@ class TsukiReader(QMainWindow):
                     
                     self.tabWidget.addTab(text_edit, icon, os.path.basename(fileName))
                     
-                    # 尝试使用多种编码打开文件
+                    # 尝试使���多种编码打开文件
                     if not self.tryOpenWithEncodings(fileName, text_edit):
                         raise UnicodeDecodeError('utf-8', b'', 0, 1, '无法使用任何已知编码打开文件')
                     
@@ -2045,6 +2374,7 @@ class TsukiReader(QMainWindow):
             }
             QMenu {
                 background: rgba(255, 255, 255, 0.95);
+                background-color: white;
                 border: 1px solid rgba(226, 232, 240, 0.8);
                 border-radius: 12px;
                 padding: 8px;
@@ -2280,6 +2610,30 @@ class TsukiReader(QMainWindow):
         from PyQt5.QtWidgets import QGraphicsOpacityEffect
         context_menu = QMenu(editor)
         
+        # 设置菜单透明度和样式
+        context_menu.setAttribute(Qt.WA_TranslucentBackground)
+        context_menu.setWindowFlags(context_menu.windowFlags() | Qt.FramelessWindowHint) # 添加无边框标志
+        context_menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(255, 255, 255, 0.95);
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 5px 25px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: rgba(0, 0, 0, 0.1);
+            }
+            QMenu::separator {
+                height: 1px;
+                background: rgba(0, 0, 0, 0.1);
+                margin: 5px 0px;
+            }
+        """)
+        
         # 设置菜单透明度动画
         opacity_effect = QGraphicsOpacityEffect(context_menu)
         context_menu.setGraphicsEffect(opacity_effect)
@@ -2441,7 +2795,7 @@ class TsukiReader(QMainWindow):
         
         try:
             config.read(config_path, encoding='utf-8')
-            image_path = config.get('Background', 'image_path', fallback='./tsuki/assets/app/default/default_light.png')
+            image_path = config.get('Background', 'image_path', fallback='./tsuki/assets/app/default/jianbai.png')
             
             if image_path and os.path.exists(image_path):
                 style_sheet = f'background-image: url("{image_path}");'
@@ -2711,7 +3065,7 @@ class TsukiReader(QMainWindow):
         # logging.info(self.tr(f"为文件 {file_name} 选择图标: {icon_path}"))
         
         if not os.path.isfile(icon_path):
-            logging.warning(self.tr(f"图标文件不存在: {icon_path}，使用默认图标"))
+            logging.warning(self.tr(f"图标文件不存在: {icon_path}，���用默认图标"))
             icon_path = './tsuki/assets/resources/language/unknown.png'
             if not os.path.isfile(icon_path):
                 logging.error(self.tr(f"默认图标文件也不存在: {icon_path}"))
@@ -3216,7 +3570,7 @@ class TsukiReader(QMainWindow):
         result = ClutMessageBox.show_message(
             self,
             title=self.tr(f"检测更新 | 您的版本Ver{self.current_version} | TsukiNotes"),
-            text=self.tr(f"Hey,您现在使用的是：\n[备用]更新方案\n[推荐🔰]自动检测\n若无法成功检测，建议打开魔法再次尝试\nVersion:{self.current_version}\nTsukiNotes 2024"),
+            text=self.tr(f"Hey,您现在使用的是：\n[备用]更新方案\n[推荐🔰]自动检测\n若无法成功检测，建议打开魔法再次尝试\nVersion:{self.current_version}\nTsukiNotes 2025"),
             buttons=["下载源1-OD", "下载源2-123", "Github", "官网版本对照🔰", "取消"]
         )
 
@@ -3262,7 +3616,7 @@ class TsukiReader(QMainWindow):
                 </div>
                 
                 <p style='font-family: "Microsoft YaHei", sans-serif; font-size: 16px; text-align: center; margin: 15px 0; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);'>
-                    <strong>BY ZZBuAoYe 2024</strong>
+                    <strong>BY ZZBuAoYe 2025</strong>
                 </p>
                 
                 <div style='background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%); padding: 15px; border-radius: 8px; margin: 20px 0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);'>
@@ -3272,7 +3626,7 @@ class TsukiReader(QMainWindow):
                 </div>
                 
                 <p style='font-family: "Microsoft YaHei", sans-serif; font-size: 12px; text-align: center; margin-top: 20px; color: #6e7c7c; text-shadow: 1px 1px 1px rgba(0,0,0,0.05);'>
-                    Copyright © 2024 ZZBuAoYe. All rights reserved.
+                    Copyright © 2025 ZZBuAoYe. All rights reserved.
                 </p>
             </div>
         """.format(current_version, version_td))
@@ -3404,7 +3758,7 @@ class TsukiReader(QMainWindow):
                     <span style='color:#666;display:inline-block;width:80px'>内部版本:</span> <span style='margin-left:10px'>{versiongj}</span>
                 </p>
                 <p style='color:#888;font-size:13px;text-align:center;margin-top:20px;padding-top:15px;border-top:1px solid #eee'>
-                    ZZBuAoYe 2024©Copyright
+                    ZZBuAoYe 2025©Copyright
                 </p>
             </div>
         </div>
@@ -3771,7 +4125,7 @@ class TsukiReader(QMainWindow):
             if not os.path.exists(config_path):
                 try:
                     config['Background'] = {
-                        'image_path': self.get_app_path('assets/app/default/default_light.png'),
+                        'image_path': self.get_app_path('assets/app/default/jianbai.png'),
                         'color': '#FFFFFF'
                     }
                     with open(config_path, 'w', encoding='utf-8') as f:
@@ -3784,7 +4138,7 @@ class TsukiReader(QMainWindow):
             try:
                 config.read(config_path, encoding='utf-8')
                 image_path = config.get('Background', 'image_path', 
-                                      fallback=self.get_app_path('assets/app/default/default_light.png'))
+                                      fallback=self.get_app_path('assets/app/default/jianbai.png'))
                 
                 # 规范化路径并将反斜杠转换为正斜杠
                 image_path = os.path.normpath(image_path).replace('\\', '/')
@@ -3802,7 +4156,7 @@ class TsukiReader(QMainWindow):
                     logger.info(f"成功加载背景图片: {image_path}")
                 else:
                     logger.warning(f"背景图片不存在: {image_path}")
-                    default_image = self.get_app_path('assets/app/default/default_light.png')
+                    default_image = self.get_app_path('assets/app/default/jianbai.png')
                     default_image = os.path.normpath(default_image).replace('\\', '/')
                     if os.path.exists(default_image):
                         style_sheet = """
@@ -3832,7 +4186,7 @@ class TsukiReader(QMainWindow):
             config_path = os.path.join(user_config_dir, 'background_color.ini').replace('\\', '/')
             
             # 规范化默认图片路径
-            default_image_path = os.path.normpath(self.get_apppath('assets/app/default/default_light.png')).replace('\\', '/')
+            default_image_path = os.path.normpath(self.get_apppath('assets/app/default/jianbai.png')).replace('\\', '/')
             
             # 如果配置文件不存在，创建新的配置
             if not os.path.exists(config_path):
@@ -3916,7 +4270,7 @@ class TsukiReader(QMainWindow):
             config['Background'] = {
                 'color': bg_color,
                 'text_color': text_color,
-                'image_path': './tsuki/assets/app/default/default_light.png'
+                'image_path': './tsuki/assets/app/default/jianbai.png'
 
             }
         
@@ -3967,7 +4321,7 @@ class TsukiReader(QMainWindow):
     def loadDefaultBackground(self):
         try:
             # 默认背景图片路径
-            default_bg = './tsuki/assets/app/default/default_light.png'
+            default_bg = './tsuki/assets/app/default/jianbai.png'
             
             if os.path.exists(default_bg):
                 # 设置默认背景图片
@@ -4007,7 +4361,7 @@ class TsukiReader(QMainWindow):
         try:
             # 定义配置文件和默认背景图片的路径
             self.config_path = "./tsuki/assets/app/config/background/TN_BackGround.ini"
-            self.default_background_path = "./tsuki/assets/app/default/default_light.png"
+            self.default_background_path = "./tsuki/assets/app/default/jianbai.png"
 
             # 确保配置目录存在
             os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
@@ -4216,12 +4570,12 @@ class TsukiReader(QMainWindow):
         file_path = self.tr('./tsuki/assets/app/config/background/TN_BackGround.ini')
         config = configparser.ConfigParser()
         filename = self.tr("TN_BackGround.ini")
-        defaultimage = self.tr("./tsuki/assets/app/default/default_light.png")
+        defaultimage = self.tr("./tsuki/assets/app/default/jianbai.png")
         if os.path.exists(file_path):
             config.read(file_path)
             if 'Background' not in config.sections():
                 config.add_section('Background')
-            config.set('Background', 'imagepath', self.tr('./tsuki/assets/app/default/default_light.png'))
+            config.set('Background', 'imagepath', self.tr('./tsuki/assets/app/default/jianbai.png'))
             with open(file_path, 'w') as configfile:
                 config.write(configfile)
             msg_box = QMessageBox()
@@ -4231,7 +4585,7 @@ class TsukiReader(QMainWindow):
             msg_box.setIconPixmap(QIcon(self.tr('./tsuki/assets/resources/done.png')).pixmap(64, 64))  # 设置自定义图标
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
-            self.setBackgroundImageFromFile(self.tr('./tsuki/assets/app/default/default_light.png'))
+            self.setBackgroundImageFromFile(self.tr('./tsuki/assets/app/default/jianbai.png'))
 
         else:
             msg_box = QMessageBox()
@@ -4431,6 +4785,56 @@ class TsukiReader(QMainWindow):
             logger.error(f"获取最新版本失败: {e}")
             return None
 
+def get_crash_report_path():
+    """获取 crash report 程序的路径"""
+    if getattr(sys, 'frozen', False):
+        # 如果是打包后的 exe
+        base_path = os.path.dirname(sys.executable)
+        crash_report_path = os.path.join(base_path, 'CrashReport.exe')
+    else:
+        # 如果是开发环境
+        crash_report_path = os.path.join(os.path.dirname(__file__), 'CrashReport.exe')
+    
+    return crash_report_path
+
+def launch_crash_report(error_info):
+    """启动崩溃报告程序"""
+    try:
+        crash_report_path = get_crash_report_path()
+        if os.path.exists(crash_report_path):
+            # 使用新的进程组启动崩溃报告程序
+            startupinfo = None
+            if os.name == 'nt':  # Windows系统
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+            subprocess.Popen(
+                [crash_report_path, error_info],
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                close_fds=True
+            )
+            
+            # 确保主程序正常退出
+            sys.exit(1)
+        else:
+            logger.error(f"找不到崩溃报告程序: {crash_report_path}")
+            
+    except Exception as e:
+        logger.error(f"启动崩溃报告程序失败: {str(e)}")
+        # 确保错误被记录
+        with open('crash_launch_error.log', 'w', encoding='utf-8') as f:
+            f.write(f"Error launching crash report: {str(e)}\n{traceback.format_exc()}")
+
+def crash_app():
+    """测试崩溃功能"""
+    try:
+        raise Exception("用户手动触发崩溃")
+    except Exception as e:
+        error_info = f"Application crashed: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_info)
+        launch_crash_report(error_info)
+
 if __name__ == "__main__":
     try:
         app = QApplication(sys.argv)
@@ -4439,6 +4843,7 @@ if __name__ == "__main__":
         logger.info("Main window displayed")
         sys.exit(app.exec_())
     except Exception as e:
-        logger.error(f"Application failed to start: {str(e)}")
-        crash_report()  # 在这里添加
-        raise
+        error_info = f"Application crashed: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_info)
+        launch_crash_report(error_info)
+        sys.exit(1)

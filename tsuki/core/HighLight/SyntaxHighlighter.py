@@ -2,6 +2,7 @@ from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QFont, QColor
 from PyQt5.QtCore import QRegExp,Qt
 from PyQt5.QtWidgets import QApplication
 import re
+import os
 class SyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -448,3 +449,297 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.highlight_pattern(text, expression, self.list_format)
         expression = QRegExp(r"^\s*\d+\.\s")
         self.highlight_pattern(text, expression, self.list_format)
+
+class JsonHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # JSON 键格式
+        key_format = QTextCharFormat()
+        key_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        self.key_pattern = (QRegExp(r'"[^"]*"\s*:'), key_format)
+        
+        # 字符串值格式
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.string_pattern = (QRegExp(r':\s*"[^"]*"'), string_format)
+        
+        # 数值格式
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.number_pattern = (QRegExp(r':\s*-?\d+\.?\d*'), number_format)
+        
+        # 布尔值和null格式
+        constant_format = QTextCharFormat()
+        constant_format.setForeground(QColor("#800080" if light else "#9370DB"))
+        constant_format.setFontWeight(QFont.Bold)
+        self.constant_pattern = (QRegExp(r':\s*(true|false|null)\b'), constant_format)
+
+    def highlightBlock(self, text):
+        self.highlightPattern(text, *self.key_pattern)
+        self.highlightPattern(text, *self.string_pattern)
+        self.highlightPattern(text, *self.number_pattern)
+        self.highlightPattern(text, *self.constant_pattern)
+
+    def highlightPattern(self, text, pattern, format):
+        expression = QRegExp(pattern)
+        index = expression.indexIn(text)
+        while index >= 0:
+            length = expression.matchedLength()
+            self.setFormat(index, length, format)
+            index = expression.indexIn(text, index + length)
+
+class IniHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # 节名格式
+        section_format = QTextCharFormat()
+        section_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        section_format.setFontWeight(QFont.Bold)
+        self.section_pattern = (QRegExp(r'^\[.*\]'), section_format)
+        
+        # 键格式
+        key_format = QTextCharFormat()
+        key_format.setForeground(QColor("#800000" if light else "#CD5C5C"))
+        self.key_pattern = (QRegExp(r'^[^=\n]+(?==)'), key_format)
+        
+        # 值格式
+        value_format = QTextCharFormat()
+        value_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.value_pattern = (QRegExp(r'=.*$'), value_format)
+        
+        # 注释格式
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#808080" if light else "#A9A9A9"))
+        self.comment_pattern = (QRegExp(r';.*$|#.*$'), comment_format)
+
+    def highlightBlock(self, text):
+        self.highlightPattern(text, *self.section_pattern)
+        self.highlightPattern(text, *self.key_pattern)
+        self.highlightPattern(text, *self.value_pattern)
+        self.highlightPattern(text, *self.comment_pattern)
+
+    def highlightPattern(self, text, pattern, format):
+        expression = QRegExp(pattern)
+        index = expression.indexIn(text)
+        while index >= 0:
+            length = expression.matchedLength()
+            self.setFormat(index, length, format)
+            index = expression.indexIn(text, index + length)
+
+class BatchHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # 命令关键字格式
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "echo", "set", "if", "else", "for", "in", "do", "goto", "call",
+            "exit", "pause", "rem", "cd", "md", "rd", "dir", "type", "copy",
+            "move", "del", "ren", "title", "cls", "color", "start", "choice",
+            "errorlevel", "exist", "defined", "not", "equ", "neq", "lss",
+            "leq", "gtr", "geq"
+        ]
+        self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b", Qt.CaseInsensitive), 
+                                keyword_format) for keyword in keywords]
+        
+        # 变量格式
+        variable_format = QTextCharFormat()
+        variable_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.variable_pattern = (QRegExp(r"%[^%]+%|\%\w+\%"), variable_format)
+        
+        # 注释格式
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.comment_pattern = (QRegExp(r"^(?:rem|::).*$", Qt.CaseInsensitive), comment_format)
+        
+        # 标签格式
+        label_format = QTextCharFormat()
+        label_format.setForeground(QColor("#800080" if light else "#9370DB"))
+        self.label_pattern = (QRegExp(r"^\s*:\w+"), label_format)
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            self.highlightPattern(text, pattern, format)
+        self.highlightPattern(text, *self.variable_pattern)
+        self.highlightPattern(text, *self.comment_pattern)
+        self.highlightPattern(text, *self.label_pattern)
+
+class PowerShellHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # PowerShell 关键字
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "Begin", "Break", "Catch", "Class", "Continue", "Data", "Define",
+            "Do", "DynamicParam", "Else", "ElseIf", "End", "Exit", "Filter",
+            "Finally", "For", "ForEach", "From", "Function", "If", "In",
+            "InlineScript", "Parallel", "Param", "Process", "Return",
+            "Sequence", "Switch", "Throw", "Trap", "Try", "Until", "Using",
+            "Var", "While", "Workflow"
+        ]
+        self.keyword_patterns = [(QRegExp(r"\b" + keyword + r"\b"), keyword_format)
+                                for keyword in keywords]
+        
+        # 变量格式
+        variable_format = QTextCharFormat()
+        variable_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.variable_pattern = (QRegExp(r"\$\w+"), variable_format)
+        
+        # 字符串格式
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.string_pattern = (QRegExp(r'"[^"]*"|\'[^\']*\''), string_format)
+        
+        # 注释格式
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#808080" if light else "#A9A9A9"))
+        self.comment_pattern = (QRegExp(r"#.*$"), comment_format)
+        
+        # cmdlet格式
+        cmdlet_format = QTextCharFormat()
+        cmdlet_format.setForeground(QColor("#800080" if light else "#9370DB"))
+        self.cmdlet_pattern = (QRegExp(r"\b[A-Z]\w+-\w+\b"), cmdlet_format)
+
+    def highlightBlock(self, text):
+        for pattern, format in self.keyword_patterns:
+            self.highlightPattern(text, pattern, format)
+        self.highlightPattern(text, *self.variable_pattern)
+        self.highlightPattern(text, *self.string_pattern)
+        self.highlightPattern(text, *self.comment_pattern)
+        self.highlightPattern(text, *self.cmdlet_pattern)
+
+class HtmlHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # 标签格式
+        tag_format = QTextCharFormat()
+        tag_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        self.tag_pattern = (QRegExp(r"<[!?]?[a-zA-Z0-9_-]+(?=[\s>])|</[a-zA-Z0-9_-]+>|/>|>"), 
+                          tag_format)
+        
+        # 属性格式
+        attr_format = QTextCharFormat()
+        attr_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.attr_pattern = (QRegExp(r'\b[a-zA-Z-]+(?=\s*=)'), attr_format)
+        
+        # 属性值格式
+        value_format = QTextCharFormat()
+        value_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.value_pattern = (QRegExp(r'"[^"]*"'), value_format)
+        
+        # 注释格式
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#808080" if light else "#A9A9A9"))
+        self.comment_pattern = (QRegExp(r"<!--[\s\S]*?-->"), comment_format)
+        
+        # DOCTYPE格式
+        doctype_format = QTextCharFormat()
+        doctype_format.setForeground(QColor("#800080" if light else "#9370DB"))
+        self.doctype_pattern = (QRegExp(r"<!DOCTYPE[^>]+>"), doctype_format)
+
+    def highlightBlock(self, text):
+        self.highlightPattern(text, *self.tag_pattern)
+        self.highlightPattern(text, *self.attr_pattern)
+        self.highlightPattern(text, *self.value_pattern)
+        self.highlightPattern(text, *self.comment_pattern)
+        self.highlightPattern(text, *self.doctype_pattern)
+
+class CssHighlighter(SyntaxHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(parent)
+        self.light = light
+        
+        # 选择器格式
+        selector_format = QTextCharFormat()
+        selector_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        self.selector_pattern = (QRegExp(r"[.#]?[\w-]+(?=[,\s{])"), selector_format)
+        
+        # 属性格式
+        property_format = QTextCharFormat()
+        property_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.property_pattern = (QRegExp(r"[\w-]+(?=\s*:)"), property_format)
+        
+        # 值格式
+        value_format = QTextCharFormat()
+        value_format.setForeground(QColor("#008000" if light else "#32CD32"))
+        self.value_pattern = (QRegExp(r":\s*[^;]+"), value_format)
+        
+        # 注释格式
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#808080" if light else "#A9A9A9"))
+        self.comment_pattern = (QRegExp(r"/\*[\s\S]*?\*/"), comment_format)
+        
+        # 伪类/伪元素格式
+        pseudo_format = QTextCharFormat()
+        pseudo_format.setForeground(QColor("#800080" if light else "#9370DB"))
+        self.pseudo_pattern = (QRegExp(r"::?[\w-]+"), pseudo_format)
+
+    def highlightBlock(self, text):
+        self.highlightPattern(text, *self.selector_pattern)
+        self.highlightPattern(text, *self.property_pattern)
+        self.highlightPattern(text, *self.value_pattern)
+        self.highlightPattern(text, *self.comment_pattern)
+        self.highlightPattern(text, *self.pseudo_pattern)
+
+class QssHighlighter(CssHighlighter):
+    def __init__(self, light=True, parent=None):
+        super().__init__(light, parent)
+        
+        # 添加QSS特有的选择器
+        qss_selector_format = QTextCharFormat()
+        qss_selector_format.setForeground(QColor("#0000FF" if light else "#4169E1"))
+        qss_selectors = [
+            "QMainWindow", "QWidget", "QPushButton", "QLabel", "QLineEdit",
+            "QTextEdit", "QComboBox", "QSpinBox", "QCheckBox", "QRadioButton",
+            "QScrollBar", "QSlider", "QProgressBar", "QMenu", "QMenuBar",
+            "QTabWidget", "QTabBar", "QToolBar", "QStatusBar", "QListView",
+            "QTreeView", "QTableView", "QHeaderView"
+        ]
+        self.qss_patterns = [(QRegExp(r"\b" + selector + r"\b"), qss_selector_format)
+                            for selector in qss_selectors]
+        
+        # QSS特有的属性
+        qss_property_format = QTextCharFormat()
+        qss_property_format.setForeground(QColor("#FF4500" if light else "#FFA500"))
+        self.qss_property_pattern = (QRegExp(r"qproperty-[\w-]+"), qss_property_format)
+
+    def highlightBlock(self, text):
+        super().highlightBlock(text)
+        for pattern, format in self.qss_patterns:
+            self.highlightPattern(text, pattern, format)
+        self.highlightPattern(text, *self.qss_property_pattern)
+
+def get_highlighter_for_file(file_path, parent=None):
+    """根据文件扩展名返回对应的语法高亮器"""
+    ext = os.path.splitext(file_path)[1].lower()
+    highlighters = {
+        '.py': PythonHighlighter,
+        '.md': MarkdownHighlighter,
+        '.java': JavaHighlighter,
+        '.cpp': CppHighlighter,
+        '.h': CppHighlighter,
+        '.hpp': CppHighlighter,
+        '.c': CppHighlighter,
+        '.json': JsonHighlighter,  # 添加 JSON 支持  
+        '.ini': IniHighlighter,
+        '.bat': BatchHighlighter,
+        '.ps1': PowerShellHighlighter,
+        '.html': HtmlHighlighter,
+        '.css': CssHighlighter,
+        '.qss': QssHighlighter
+    }
+    highlighter_class = highlighters.get(ext)
+    return highlighter_class(parent) if highlighter_class else None

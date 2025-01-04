@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QStackedWidget, QPushButton, QLabel, QGridLayout, QWidget, QGraphicsDropShadowEffect)
-from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QParallelAnimationGroup,QRect
+from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QParallelAnimationGroup,QRect,QTimer
 from PyQt5.QtGui import QIcon, QColor
 import os
 import logging
@@ -15,28 +15,40 @@ import os
 import time
 import requests
 import tempfile
+import json
 logger = logging.getLogger(__name__)
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
         super(SettingsWindow, self).__init__(parent)
-        # 在其他初始化之前先初始化动画相关属性
+        
+        # 修改窗口属性
+        self.setAttribute(Qt.WA_TranslucentBackground, False)  # 禁用透明背景
+        self.setFocusPolicy(Qt.NoFocus) # 取消焦点
+
+        self.setWindowFlags(
+            Qt.Dialog | 
+            Qt.FramelessWindowHint | 
+            Qt.WindowCloseButtonHint | 
+            Qt.MSWindowsFixedSizeDialogHint
+        )
+        
+        # 添加拖动相关变量
+        self.dragging = False
+        self.drag_position = None
+        
+        # 其他初始化代码保持不变
         self.button_animations = {}
         self.page_animation = None
-        
-        # 移除 WindowStaysOnTopHint,让设置窗口可以被消息框覆盖
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint & ~Qt.WindowModal)
         self.setWindowTitle('Tsuki全局设置[Settings]')
         self.setWindowIcon(QIcon('./tsuki/assets/resources/settings.png'))
-
-        # 应用样式
-        # self.setStyleSheet("background-image: url('./tsuki/assets/app/default/default_light.png');")
         self.setGeometry(100, 100, 800, 400)
         logger.info('Open Setting')
-
+        
         # 设置布局
         main_layout = QHBoxLayout(self)
-
+        main_layout.setContentsMargins(10, 10, 10, 10)  # 添加边距
+        
         sidebar = QListWidget(self)
         sidebar.setFixedWidth(150)
         sidebar.addItem("界面设置")
@@ -46,6 +58,7 @@ class SettingsWindow(QDialog):
         sidebar.addItem("退出Exit")
         sidebar.currentRowChanged.connect(self.display)
         sidebar.itemClicked.connect(self.check_exit)
+        sidebar.setFocusPolicy(Qt.NoFocus) # 取消焦点
 
         self.stack = QStackedWidget(self)
         self.stack.addWidget(self.interfacePage())
@@ -66,18 +79,28 @@ class SettingsWindow(QDialog):
 
         # 应用样式
         self.applyStyle()
+        
+    # 添加鼠标事件处理
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self.dragging:
+            self.move(event.globalPos() - self.drag_position)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
+            event.accept()
 
     def interfacePage(self):
-        """创建界面设置页面"""
         page = QWidget()
         layout = QVBoxLayout(page)
-
-        # 设置页面背景色以匹配拟态风格
-        page.setStyleSheet("""
-            QWidget {
-                background-color: #e0e5ec;
-            }
-        """)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # 标题
         title_label = QLabel("| 界面设置", self)
@@ -89,15 +112,16 @@ class SettingsWindow(QDialog):
             }
         """)
         layout.addWidget(title_label, alignment=Qt.AlignLeft | Qt.AlignTop)
-
-        # 按钮布局
+        
+        # 按钮网格布局
         button_layout = QGridLayout()
         button_layout.setSpacing(15)
-
-        # 添加按钮
         self._add_interface_buttons(button_layout)
-
         layout.addLayout(button_layout)
+        
+        # 添加弹性空间
+        layout.addStretch()
+        
         return page
 
     def _add_interface_buttons(self, layout):
@@ -109,17 +133,13 @@ class SettingsWindow(QDialog):
             ("重置背景图", self.parent().reset_background, 1, 1),
             ("高亮显示设置", self.parent().total_setting, 2, 0),
             ("彩色设置背景", self.parent().color_bg, 2, 1),
-            ("API背景", self.openApiDialog, 3, 0, 1, 2)
+            ("API背景", self.openApiDialog, 3, 0),
+            ("主题设置", self.openThemeDialog, 3, 1)
         ]
         
         for button in buttons:
-            if len(button) == 4:
-                name, callback, row, col = button
-                layout.addWidget(self.createButton(name, callback), row, col)
-            else:
-                name, callback, row, col, rowspan, colspan = button
-                layout.addWidget(self.createButton(name, callback), row, col, rowspan, colspan)
-
+            name, callback, row, col = button
+            layout.addWidget(self.createButton(name, callback), row, col)
     def openApiDialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("API背景")
@@ -218,6 +238,7 @@ class SettingsWindow(QDialog):
         clear_cache_btn.setMinimumHeight(35)
         clear_cache_btn.setStyleSheet("""
             QPushButton {
+                *outline: none;
                 background-color: rgba(139, 92, 246, 0.15);
                 color: white;
                 border: none;
@@ -596,75 +617,125 @@ class SettingsWindow(QDialog):
         finally:
             download_btn.setEnabled(True)
 
-        # 添加自动更新设置
-        auto_update_check = QCheckBox("启用自动更新")
-        update_interval = QSpinBox()
-        update_interval.setRange(1, 24*60*60)
-        update_interval.setValue(3600)
-        update_interval.setSuffix(" 秒")
-        update_interval.setEnabled(False)
+    def openThemeDialog(self):
+        """打开主题设置对话框"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("主题设置")
+        dialog.setWindowIcon(QIcon('./tsuki/assets/resources/settings.png'))
+        dialog.setFixedSize(400, 300)
         
-        auto_update_check.stateChanged.connect(update_interval.setEnabled)
+        # 主布局
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
         
-        # 添加自动清理设置  
-        auto_clean_check = QCheckBox("启用自动清理")
-        clean_interval = QSpinBox()
-        clean_interval.setRange(1, 7*24*60*60)
-        clean_interval.setValue(86400)
-        clean_interval.setSuffix(" 秒")
-        clean_interval.setEnabled(False)
-        
-        auto_clean_check.stateChanged.connect(clean_interval.setEnabled)
-        
-        # 添加到布局
-        settings_layout = QGridLayout()
-        settings_layout.addWidget(auto_update_check, 0, 0)
-        settings_layout.addWidget(update_interval, 0, 1)
-        settings_layout.addWidget(auto_clean_check, 1, 0)
-        settings_layout.addWidget(clean_interval, 1, 1)
-        
-        # 保存设置
-        def save_settings():
-            config = configparser.ConfigParser()
-            config['API'] = {
-                'url': api_input.text(),
-                'json_path': json_input.text(),
-                'auto_update': str(auto_update_check.isChecked()).lower(),
-                'update_interval': str(update_interval.value()),
-                'auto_clean': str(auto_clean_check.isChecked()).lower(),
-                'clean_interval': str(clean_interval.value())
+        # 主题选择下拉框
+        theme_label = QLabel("选择主题:")
+        self.theme_combo = QComboBox()
+        self.theme_combo.setMinimumHeight(30)
+        self.theme_combo.setStyleSheet("""
+            QComboBox {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 5px;
             }
-            
+        """)
+        self.load_available_themes()
+        
+        # 主题信息显示区域
+        info_text = QTextEdit()
+        info_text.setReadOnly(True)
+        info_text.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px;
+                color: #333;
+            }
+        """)
+        
+        # 更新主题信息显示
+        def update_theme_info():
             try:
-                cfg_dir = os.path.join(tempfile.gettempdir(), 'tsuki', 'assets', 'app', 'cfg')
-                os.makedirs(cfg_dir, exist_ok=True)
-                cfg_path = os.path.join(cfg_dir, 'background_api_get.ini')
-                with open(cfg_path, 'w') as f:
-                    config.write(f)
+                current_theme = self.theme_combo.currentText()
+                theme_path = f'./tsuki/theme/{current_theme}/theme.json'
+                
+                if os.path.exists(theme_path):
+                    with open(theme_path, 'r', encoding='utf-8') as f:
+                        theme_data = json.load(f)
+                        info = f"""主题名称: {theme_data.get('name', '默认主题')}
+版本: {theme_data.get('version', '1.0')}
+作者: {theme_data.get('author', 'TsukiNotes')}
+描述: {theme_data.get('description', '无描述')}"""
+                        info_text.setText(info)
+                else:
+                    info_text.setText("无法加载主题信息")
             except Exception as e:
-                logger.error(f"[Log/ERROR]Failed to save API settings: {str(e)}")
+                info_text.setText(f"加载主题信息失败: {str(e)}")
         
-        # 加载设置
-        def load_settings():
-            try:
-                config = configparser.ConfigParser()
-                config.read('./tsuki/assets/app/cfg/background_api_get.ini')
-                if 'API' in config:
-                    api_input.setText(config['API'].get('url', ''))
-                    json_input.setText(config['API'].get('json_path', ''))
-                    auto_update_check.setChecked(config['API'].getboolean('auto_update', False))
-                    update_interval.setValue(config['API'].getint('update_interval', 3600))
-                    auto_clean_check.setChecked(config['API'].getboolean('auto_clean', False))
-                    clean_interval.setValue(config['API'].getint('clean_interval', 86400))
-            except Exception as e:
-                logger.error(f"[Log/ERROR]Failed to load API settings: {str(e)}")
+        self.theme_combo.currentTextChanged.connect(update_theme_info)
+        update_theme_info()
         
-        # 连接信号
-        download_btn.clicked.connect(lambda: (self._download_image(dialog, api_input, json_input, download_btn, status_label), save_settings()))
-        dialog.finished.connect(save_settings)
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
         
-        # 初始加载设置
-        load_settings()
+        # 预览和应用按钮
+        preview_btn = QPushButton("预览主题")
+        apply_btn = QPushButton("应用主题")
+        close_btn = QPushButton("关闭")
+        
+        for btn in [preview_btn, apply_btn, close_btn]:
+            btn.setMinimumHeight(30)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4a90e2;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 20px;
+                }
+                QPushButton:hover {
+                    background-color: #357abd;
+                }
+            """)
+        
+        preview_btn.clicked.connect(lambda: self.preview_theme(self.theme_combo.currentText()))
+        apply_btn.clicked.connect(self.apply_selected_theme)
+        close_btn.clicked.connect(dialog.close)
+        
+        button_layout.addWidget(preview_btn)
+        button_layout.addWidget(apply_btn)
+        button_layout.addWidget(close_btn)
+        
+        # 添加所有组件到主布局
+        layout.addWidget(theme_label)
+        layout.addWidget(self.theme_combo)
+        layout.addWidget(info_text)
+        layout.addLayout(button_layout)
+        
+        # 设置对话框样式
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #666666;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: white;
+            }
+        """)
+        
+        # 添加阴影效果
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setXOffset(0)
+        shadow.setYOffset(0)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        dialog.setGraphicsEffect(shadow)
+        
+        dialog.exec_()
 
     def fontPage(self):
         page = QWidget()
@@ -715,7 +786,7 @@ class SettingsWindow(QDialog):
         return page
 
     def createButton(self, text, slot):
-        """优化按钮动画效果"""
+        """创建按钮"""
         button = QPushButton(text)
         button.clicked.connect(slot)
         button.setMinimumHeight(40)
@@ -772,17 +843,13 @@ class SettingsWindow(QDialog):
             shadow_anim.setEndValue(5)
             
             curr_geo = button.geometry()
-            # 添加弹性缩放效果
             scale_anim.setStartValue(curr_geo)
             scale_anim.setEndValue(QRect(
                 int(curr_geo.x() + 2),
-                int(curr_geo.y() + 2), 
+                int(curr_geo.y() + 2),
                 int(curr_geo.width() * 0.95),
                 int(curr_geo.height() * 0.95)
             ))
-            # 使用弹性曲线
-            scale_anim.setEasingCurve(QEasingCurve.OutElastic)
-            scale_anim.setDuration(400)  # 增加动画时长
             
             anim_group.start()
         
@@ -799,9 +866,6 @@ class SettingsWindow(QDialog):
                 int(curr_geo.width() / 0.95),
                 int(curr_geo.height() / 0.95)
             ))
-            # 使用弹性曲线
-            scale_anim.setEasingCurve(QEasingCurve.OutBounce)
-            scale_anim.setDuration(500)  # 增加动画时长
             
             anim_group.start()
         
@@ -916,6 +980,117 @@ class SettingsWindow(QDialog):
         # 动画结束时真正关闭窗口
         self.close_animation.finished.connect(lambda: super(SettingsWindow, self).closeEvent(event))
         self.close_animation.start()
+
+    def load_available_themes(self):
+        """加载可用主题列表"""
+        try:
+            self.theme_combo.clear()
+            theme_dir = './tsuki/theme'
+            
+            if not os.path.exists(theme_dir):
+                os.makedirs(theme_dir, exist_ok=True)
+                logger.info(f"Created theme directory: {theme_dir}")
+            
+            themes = []
+            if os.path.exists(theme_dir):
+                themes = [d for d in os.listdir(theme_dir) 
+                         if os.path.isdir(os.path.join(theme_dir, d)) and 
+                         os.path.exists(os.path.join(theme_dir, d, 'theme.json'))]
+            
+            if not themes:
+                logger.warning("No themes found, creating default theme")
+                self._create_default_theme()
+                themes = ['default']
+            
+            self.theme_combo.addItems(themes)
+            
+            # 设置当前主题
+            try:
+                config = configparser.ConfigParser()
+                config_path = './tsuki/assets/app/config/theme/theme.ini'
+                if os.path.exists(config_path):
+                    config.read(config_path, encoding='utf-8')
+                    current_theme = config.get('Theme', 'current_theme', fallback='default')
+                    index = self.theme_combo.findText(current_theme)
+                    if index >= 0:
+                        self.theme_combo.setCurrentIndex(index)
+            except Exception as e:
+                logger.error(f"加载当前主题设置失败: {e}")
+                self.theme_combo.setCurrentText('default')
+            
+        except Exception as e:
+            logger.error(f"加载主题列表失败: {e}")
+            self.theme_combo.addItem('default')
+
+    def _create_default_theme(self):
+        """创建默认主题"""
+        default_theme_dir = './tsuki/theme/default'
+        os.makedirs(default_theme_dir, exist_ok=True)
+        
+        default_theme = {
+            "name": "默认主题",
+            "version": "1.0",
+            "author": "TsukiNotes",
+            "window_style": "QMainWindow { background-color: #FFFFFF; }",
+            "editor_style": "QTextEdit { background-color: #FFFFFF; color: #000000; }",
+            "menu_style": "QMenuBar { background-color: #F0F0F0; }",
+            "status_style": "QStatusBar { background-color: #F0F0F0; }"
+        }
+        
+        with open(os.path.join(default_theme_dir, 'theme.json'), 'w', encoding='utf-8') as f:
+            json.dump(default_theme, f, ensure_ascii=False, indent=4)
+
+    def apply_selected_theme(self):
+        """应用选中的主题"""
+        try:
+            theme = self.theme_combo.currentText()
+            
+            # 临时禁用窗口特效
+            main_window = self.parent()
+            was_translucent = main_window.testAttribute(Qt.WA_TranslucentBackground)
+            if was_translucent:
+                main_window.setAttribute(Qt.WA_TranslucentBackground, False)
+            
+            # 第一次应用
+            main_window.apply_theme(theme)
+            
+            # 使用 QTimer 延迟一小段时间后重新应用主题
+            QTimer.singleShot(100, lambda: self._reapply_theme(theme, was_translucent))
+            
+            logger.info(f"Theme applied: {theme}")
+            
+        except Exception as e:
+            logger.error(f"应用主题失败: {e}")
+            error_notification = OverlayNotification(parent=self)
+            error_notification.show_message(
+                title="错误",
+                message=f"应用主题失败: {str(e)}",
+                duration=5000
+            )
+
+    def _reapply_theme(self, theme, was_translucent):
+        """重新应用主题"""
+        try:
+            main_window = self.parent()
+            
+            # 第二次应用
+            main_window.apply_theme(theme)
+            
+            # 恢复窗口特效
+            if was_translucent:
+                QTimer.singleShot(50, lambda: main_window.setAttribute(Qt.WA_TranslucentBackground, True))
+            
+            # 显示成功通知
+            notification = OverlayNotification(parent=self)
+            notification.show_message(
+                title="主题设置",
+                message=f"主题 {theme} 已应用喵~",
+                duration=3000
+            )
+            
+        except Exception as e:
+            logger.error(f"重新应用主题失败: {e}")
+
     def applyStyle(self):
         # 为主窗口添加拟态效果
         main_shadow = QGraphicsDropShadowEffect()
@@ -976,3 +1151,136 @@ class SettingsWindow(QDialog):
     def check_exit(self, item):
         if item.text() == "退出Exit":
             self.close()
+
+    def show_theme_info(self):
+        """显示主题信息对话框"""
+        try:
+            current_theme = self.theme_combo.currentText()
+            theme_path = f'./tsuki/theme/{current_theme}/theme.json'
+            
+            if not os.path.exists(theme_path):
+                raise FileNotFoundError(f"主题配置文件不存在: {theme_path}")
+            
+            with open(theme_path, 'r', encoding='utf-8') as f:
+                theme_data = json.load(f)
+            
+            # 创建主题信息对话框
+            dialog = QDialog(self)
+            dialog.setWindowTitle("主题信息")
+            dialog.setFixedSize(400, 500)
+            dialog.setStyleSheet("""
+                QDialog {
+                    background-color: #e0e5ec;
+                    border-radius: 15px;
+                }
+            """)
+            
+            layout = QVBoxLayout(dialog)
+            layout.setSpacing(20)
+            layout.setContentsMargins(20, 20, 20, 20)
+            
+            # 创建主题信息卡片
+            info_card = ClutCard("主题详情", "")
+            info_content = QVBoxLayout()
+            info_content.setSpacing(15)
+            
+            # 添加主题信息
+            info_items = [
+                ("主题名称", theme_data.get("name", "未知")),
+                ("版本", theme_data.get("version", "未知")),
+                ("作者", theme_data.get("author", "未知")),
+                ("描述", theme_data.get("description", "无描述"))
+            ]
+            
+            for label, value in info_items:
+                item_widget = QWidget()
+                item_layout = QHBoxLayout(item_widget)
+                item_layout.setContentsMargins(0, 0, 0, 0)
+                
+                label_widget = QLabel(f"{label}:")
+                label_widget.setStyleSheet("font-weight: bold; color: #2d3436;")
+                value_widget = QLabel(value)
+                value_widget.setWordWrap(True)
+                value_widget.setStyleSheet("color: #2d3436;")
+                
+                item_layout.addWidget(label_widget)
+                item_layout.addWidget(value_widget, 1)
+                
+                info_content.addWidget(item_widget)
+            
+            info_card.setContentLayout(info_content)
+            layout.addWidget(info_card)
+            
+            # 预览按钮
+            preview_btn = QPushButton("预览主题")
+            preview_btn.setMinimumHeight(35)
+            preview_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4a90e2;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #357abd;
+                }
+                QPushButton:pressed {
+                    background-color: #2868b0;
+                }
+            """)
+            preview_btn.clicked.connect(lambda: self.preview_theme(current_theme))
+            
+            layout.addWidget(preview_btn)
+            
+            # 添加阴影效果
+            shadow = QGraphicsDropShadowEffect()
+            shadow.setBlurRadius(20)
+            shadow.setXOffset(0)
+            shadow.setYOffset(0)
+            shadow.setColor(QColor(163, 177, 198, 100))
+            dialog.setGraphicsEffect(shadow)
+            
+            dialog.exec_()
+            
+        except Exception as e:
+            logger.error(f"显示主题信息失败: {e}")
+            error_notification = OverlayNotification(parent=self)
+            error_notification.show_message(
+                title="错误",
+                message=f"无法加载主题信息: {str(e)}",
+                duration=3000
+            )
+
+    def preview_theme(self, theme_name):
+        """预览主题效果"""
+        try:
+            # 保存当前主题名称
+            current_theme = theme_name
+            
+            # 临时应用主题
+            self.parent().apply_theme(current_theme)
+            
+            # 3秒后恢复原主题
+            config = configparser.ConfigParser()
+            config_path = './tsuki/assets/app/config/theme/theme.ini'
+            
+            if os.path.exists(config_path):
+                config.read(config_path, encoding='utf-8')
+                original_theme = config.get('Theme', 'current_theme', fallback='default')
+            else:
+                original_theme = 'default'
+                
+            QTimer.singleShot(3000, lambda: self.parent().apply_theme(original_theme))
+            
+            # 显示提示
+            notification = OverlayNotification(parent=self)
+            notification.show_message(
+                title="主题预览",
+                message="预览将在3秒后自动恢复",
+                duration=2000
+            )
+        except Exception as e:
+            logger.error(f"预览主题失败: {e}")
+    

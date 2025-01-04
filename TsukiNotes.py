@@ -33,6 +33,8 @@ import markdown2
 import traceback
 from markdown2 import markdown as md_to_html
 import html2text
+import sympy
+from sympy import *
 from html2text import html2text 
 import ipaddress
 import shutil
@@ -73,14 +75,14 @@ from PyQt5.QtWidgets import (
     QColorDialog, QDialog, QToolBar, QLineEdit, QDialogButtonBox, QGridLayout,
     QSpacerItem, QSizePolicy, QComboBox, QProgressDialog, QToolButton, QFrame,
     QGroupBox, QListWidget, QListWidgetItem, QSpinBox,QGraphicsDropShadowEffect, QSplitter,
-    QGraphicsOpacityEffect
+    QGraphicsOpacityEffect, QStatusBar
 )
 from sympy import sympify, SympifyError
 from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, parse_expr
 import tempfile
 # The UI
 from tsuki.ui.utils.message_box import ClutMessageBox
-from tsuki.ui.utils.clut_card import ClutCard
+from tsuki.ui.utils.clut_card import ClutCard,MarkdownLabel
 from tsuki.ui.utils.clut_image_card import ClutImageCard
 from tsuki.ui.utils.overlay_notification import OverlayNotification
 from tsuki.pages.About_page import AboutPage
@@ -91,7 +93,7 @@ from tsuki.pages.Debug_page import QTextEditHandler,DebugWindow
 from tsuki.pages.Delete_old_Temp import DeleteOldTemp
 from tsuki.pages.Settings_page import SettingsWindow
 # The Core
-from tsuki.core.HighLight.SyntaxHighlighter import SyntaxHighlighter,PythonHighlighter,CppHighlighter,JavaHighlighter,MarkdownHighlighter
+from tsuki.core.HighLight.SyntaxHighlighter import *
 
 
 DeleteOldTemp.delete_old_logs(os.path.join('tsuki', 'assets', 'log', 'temp'))
@@ -587,7 +589,7 @@ def openHexFileInTab(self, fileName):
         self.tabWidget.setCurrentIndex(index)
         
         # 设置图标
-        icon_path = './tsuki/assets/resources/language/exe.png'
+        icon_path = self.get_app_path('tsuki/assets/resources/language/exe.png')
         if os.path.exists(icon_path):
             self.tabWidget.setTabIcon(index, QIcon(icon_path))
             
@@ -682,7 +684,7 @@ class TsukiReader(QMainWindow):
             self.version_td = lines[1].strip().split(':')[1].strip()
             self.version_gj = lines[2].strip().split(':')[1].strip()
             self.update_Date = lines[3].strip().split(':')[1].strip()
-        self.config_file = './tsuki/assets/app/config/launch/launch_config.ini'  
+        self.config_file = self.get_app_path('tsuki/assets/app/config/launch/launch_config.ini')
         self.load_langs()
 
         logging.debug(f"\n====================================================================================================================\n"
@@ -699,6 +701,7 @@ class TsukiReader(QMainWindow):
         self.highlight_keywords = False
         self.context_menu = None
         self.custom_lines = 0
+        self.highlighters = {}
         self.initUI()
         self.tabWidget.currentChanged.connect(self.onTabChanged)
         self.connectCurrentWidgetSignals()
@@ -729,6 +732,8 @@ class TsukiReader(QMainWindow):
     def initUI(self):
         # 移除原来的createMenus()调用
         self.tabWidget = QTabWidget()
+        self.load_theme()  
+        self.create_default_background_config()
         self.setCentralWidget(self.tabWidget)
         
         # 修改状态栏样式
@@ -906,6 +911,62 @@ class TsukiReader(QMainWindow):
         
         return languages
     
+    def create_default_background_config(self):
+        try:
+            config = configparser.ConfigParser()
+            config_dir = self.get_app_path('assets/app/config/background')
+            config_path = os.path.join(config_dir, 'background_color.ini')
+            
+            # 如果配置文件不存在,创建默认配置
+            if not os.path.exists(config_path):
+                # 确保目录存在
+                os.makedirs(config_dir, exist_ok=True)
+                
+                # 从网络下载默认背景图片
+                default_bg_url = "https://ooo.0x0.ooo/2025/01/01/OEPNyF.png"
+                default_bg = os.path.join(config_dir, 'jianbai.png')
+                
+                try:
+                    import requests
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                    response = requests.get(default_bg_url, headers=headers, verify=False)
+                    if response.status_code == 200:
+                        with open(default_bg, 'wb') as f:
+                            f.write(response.content)
+                        logger.info("已下载默认背景图片")
+                    else:
+                        logger.error("下载背景图片失败")
+                        default_bg = './assets/app/default/jianbai.png'
+                except Exception as e:
+                    logger.error(f"下载背景图片出错: {str(e)}")
+                    default_bg = './assets/app/default/jianbai.png'
+                
+                config['Background'] = {
+                    'image_path': default_bg,
+                    'color': '#FFFFFF',
+                    'transparency': '100'
+                }
+                
+                # 写入配置文件
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    config.write(f)
+                    
+                logger.info(f"已创建默认背景配置文件: {config_path}")
+                
+            else:
+                logger.info("背景配置文件已存在")
+                
+        except Exception as e:
+            logger.error(f"创建默认背景配置失败: {str(e)}")
+            # 发生错误时使用内存中的默认值
+            self.default_background = {
+                'image_path': './assets/app/default/jianbai.png',
+                'color': '#FFFFFF',
+                'transparency': '100'  
+            }
+    
     def loadAllStyles(self):
         tab_bar_style = """
     QTabWidget {
@@ -964,8 +1025,8 @@ class TsukiReader(QMainWindow):
         subcontrol-position: right;
     }
     
-    QTabBar::close-button:hover {
-        image: url(./tsuki/assets/resources/off_file.png);
+    QTabBar::close-button {
+        image: url(./tsuki/assets/resources/error.png);
     }
     
     QPushButton#addTabButton {
@@ -1045,6 +1106,7 @@ class TsukiReader(QMainWindow):
     def initUI(self):
         # 移除原来的createMenus()调用
         self.tabWidget = QTabWidget()
+        self.load_theme()  
         self.setCentralWidget(self.tabWidget)
         
         # 修改状态栏样式,使其与上方对齐
@@ -1510,10 +1572,6 @@ class TsukiReader(QMainWindow):
         aboutMenu.addAction(self.aboutAct)
         aboutMenu.addAction(self.aboutDetailsAct)
 
-        #serverMenu = menubar.addMenu(self.tr('服务器'))
-        #serverMenu.addAction(self.pingServerManuallyAct)
-        #serverMenu.addAction(self.url_msgAct)
-
         runButton = QToolButton(self)
         runButton.setIcon(QIcon('./tsuki/assets/resources/start.png'))
         runButton.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -1757,35 +1815,258 @@ class TsukiReader(QMainWindow):
             self.poll()
 
     def mathTools(self):
-        self.statusBar().showMessage(self.tr('TsukiMathTools🔰: MathTools Loading Successful !'))
+        self.statusBar().showMessage(self.tr('TsukiMathTools🔰: MathTools Loading Successful !'), 1000)
         logger.info(self.tr("The calculation tool has been successfully loaded and initialization is complete"))
         
         text_edit = self.tabWidget.currentWidget()
         cursor = text_edit.textCursor()
         selected_text = cursor.selectedText().strip()
 
-        # 构建允许的符号集合
-        allowed_chars = '0123456789+-*/()%.^ '
-        math_expr = ''.join(c for c in selected_text if c in allowed_chars)
+        # 检查是否有选中的文本
+        if not selected_text:
+            self.statusBar().showMessage(self.tr('TsukiMathTools🚫: 请先选择要计算的表达式'), 5000)
+            return
 
-        # 使用 sympy 进行解析和计算
+        # 检查是否是积分表达式
+        if '∫' in selected_text:
+            try:
+                # 提取被积函数和变量
+                match = re.search(r'∫\((.*?)\)d([a-z])', selected_text)
+                if match:
+                    integrand = match.group(1)  # 被积函数
+                    var = match.group(2)        # 积分变量
+                    
+                    # 预处理被积函数，将 ^ 替换为 **
+                    integrand = integrand.replace('^', '**')
+                    
+                    # 创建符号变量
+                    x = Symbol('x')
+                    
+                    # 解析被积函数
+                    expr = parse_expr(integrand, transformations=(standard_transformations + (implicit_multiplication_application,)))
+                    
+                    # 计算不定积分
+                    result = integrate(expr, x)
+                    
+                    # 格式化结果，将 ** 替换回 ^
+                    result_str = str(result).replace('**', '^') + ' + C'
+                    
+                    self.statusBar().showMessage(self.tr(f'积分结果✔: {result_str}'), 5000)
+                    logger.info(self.tr(f"[Log/Math]Integration Solved: {result_str}"))
+                    return
+                    
+            except Exception as e:
+                self.statusBar().showMessage(self.tr(f'积分计算错误❌: {str(e)}'), 5000)
+                logger.error(self.tr(f"[Log/Math]Integration Error: {str(e)}"))
+                return
+
+        # 检查是否是方程（包含等号）
+        if '=' in selected_text:
+            try:
+                # 分离等号两边的表达式并去除空格
+                left, right = [side.strip() for side in selected_text.split('=')]
+                
+                # 预处理表达式，处理乘号和幂运算
+                def preprocess_expr(expr):
+                    # 先处理幂运算
+                    expr = expr.replace('^', '**')
+                    # 再处理隐式乘法
+                    expr = re.sub(r'(\d)([a-zA-Z\(])', r'\1*\2', expr)  # 处理数字和变量之间的隐式乘法
+                    expr = expr.replace('x', 'x').replace('X', 'x')  # 统一变量名为x
+                    return expr
+                
+                left = preprocess_expr(left)
+                right = preprocess_expr(right)
+                
+                # 将所有项移到左边，使方程变为标准形式：expression = 0
+                expr = f"({left})-({right})"
+                
+                # 创建符号变量
+                x = Symbol('x')  # 主要处理一元方程
+                
+                # 解析表达式
+                equation = parse_expr(expr, transformations=(standard_transformations + (implicit_multiplication_application,)))
+                
+                # 求解方程
+                solutions = solve(equation, x)
+                
+                # 格式化结果，美化输出
+                def format_solution(sol):
+                    if isinstance(sol, Float):
+                        return f"{sol:.4f}".rstrip('0').rstrip('.')
+                    elif isinstance(sol, complex):
+                        return f"{sol.real:.4f}+{sol.imag:.4f}i".rstrip('0').rstrip('.')
+                    else:
+                        return str(sol)
+                
+                # 处理多个解
+                if isinstance(solutions, list):
+                    solutions.sort(key=lambda x: complex(x.evalf()).real)
+                    formatted_solutions = [format_solution(sol) for sol in solutions]
+                    if len(solutions) > 1:
+                        result = f"x₁ = {formatted_solutions[0]}, x₂ = {formatted_solutions[1]}"
+                        if len(solutions) > 2:
+                            for i, sol in enumerate(formatted_solutions[2:], 3):
+                                result += f", x₍{i}₎ = {sol}"
+                    else:
+                        result = f"x = {formatted_solutions[0]}"
+                else:
+                    result = f"x = {format_solution(solutions)}"
+                
+                # 验证解
+                verification = []
+                for sol in (solutions if isinstance(solutions, list) else [solutions]):
+                    try:
+                        # 将解代入原方程验证
+                        left_val = parse_expr(left).subs(x, sol).evalf()
+                        right_val = parse_expr(right).subs(x, sol).evalf()
+                        if abs(left_val - right_val) < 1e-10:
+                            verification.append(True)
+                        else:
+                            verification.append(False)
+                    except:
+                        verification.append(None)
+                
+                # 显示结果
+                if all(verification):
+                    self.statusBar().showMessage(self.tr(f'方程解✔: {result} (已验证)'), 5000)
+                else:
+                    self.statusBar().showMessage(self.tr(f'方程解✔: {result} (请注意验证)'), 5000)
+                logger.info(self.tr(f"[Log/Math]Equation Solved: {result}"))
+                return
+                
+            except Exception as e:
+                self.statusBar().showMessage(self.tr(f'方程求解错误❌: {str(e)}'), 5000)
+                logger.error(self.tr(f"[Log/Math]Equation Error: {str(e)}"))
+                return
+
+        # 预处理表达式，处理 x 作为乘号的情况
+        math_expr = selected_text.replace(' ', '')  # 先移除空格
+        # 检查是否包含特定的运算符或结构
+        if not any(c in math_expr for c in ['=', '∫', '∂', '∑', '∏']):  # 如果不是方程或高级运算
+            math_expr = math_expr.replace('x', '*')  # 将 x 替换为 *
+            math_expr = math_expr.replace('X', '*')  # 将 X 替换为 *
+
+        # 扩展允许的符号集合
+        allowed_chars = '0123456789+-*/()%.^√πeE '
+        allowed_chars += 'sincostanloglnabsintegraldiff∫∂∑∏≈≠≤≥±∞⋅'
+        allowed_chars += 'xyzαβγθφψω'  # 变量和希腊字母
+        math_expr = ''.join(c for c in math_expr if c in allowed_chars)
+
+        # 检查表达式是否为空
+        if not math_expr:
+            self.statusBar().showMessage(self.tr('TsukiMathTools🚫: 表达式不包含有效的数学字符'), 5000)
+            return
+
+        # 扩展数学符号替换表
+        replacements = {
+            'π': 'pi',
+            '√': 'sqrt',
+            '^': '**',
+            '×': '*',
+            '÷': '/',
+            '（': '(',
+            '）': ')',
+            '。': '.',
+            ',': '',
+            'sin': 'sin',
+            'cos': 'cos', 
+            'tan': 'tan',
+            'log': 'log',
+            'ln': 'log',
+            'abs': 'Abs',
+            '∫': 'integrate',
+            '∂': 'diff',
+            '∑': 'Sum',
+            '∏': 'Product',
+            'integral': 'integrate',
+            'diff': 'diff',
+            '≈': '~=',
+            '≠': '!=',
+            '≤': '<=',
+            '≥': '>=',
+            '±': '+-',
+            '∞': 'oo',
+            'α': 'alpha',
+            'β': 'beta',
+            'γ': 'gamma',
+            'θ': 'theta',
+            'φ': 'phi',
+            'ψ': 'psi',
+            'ω': 'omega',
+            '⋅': '*'  # 添加中点乘号的替换
+        }
+
+        # 预处理表达式,处理隐式乘法
+        math_expr = re.sub(r'(\d+)([a-zA-Z\(])', r'\1*\2', math_expr)  # 数字后跟字母或括号
+        math_expr = re.sub(r'(\))(\d+|\(|[a-zA-Z])', r'\1*\2', math_expr)  # 右括号后跟数字、左括号或字母
+
+        for old, new in replacements.items():
+            math_expr = math_expr.replace(old, new)
+
         try:
-            # 使用 sympy 的转换器处理隐式乘法
-            transformations = (standard_transformations + (implicit_multiplication_application,))
-            parsed_expr = parse_expr(math_expr, transformations=transformations)
-            
-            # 计算表达式
-            result = parsed_expr.evalf()
+            # 创建基本符号变量
+            x, y, z = symbols('x y z')
+            t = Symbol('t')
+            alpha, beta, gamma = symbols('alpha beta gamma')
+            theta, phi, psi, omega = symbols('theta phi psi omega')
 
-            self.statusBar().showMessage(self.tr(f'计算结果✔: {result}'))
+            # 检查是否包含高级数学运算
+            advanced_ops = ['integrate', 'diff', 'Sum', 'Product']
+            has_advanced_ops = False
+            for op in advanced_ops:
+                if op in math_expr:
+                    has_advanced_ops = True
+                    break
+
+            if has_advanced_ops:
+                # 解析复杂表达式
+                expr = parse_expr(math_expr, local_dict={
+                    'x': x, 'y': y, 'z': z, 't': t,
+                    'alpha': alpha, 'beta': beta, 'gamma': gamma,
+                    'theta': theta, 'phi': phi, 'psi': psi, 'omega': omega
+                })
+                result = expr
+            else:
+                # 普通数值计算
+                transformations = (standard_transformations + (implicit_multiplication_application,))
+                parsed_expr = parse_expr(math_expr, transformations=transformations)
+                result = parsed_expr.evalf(15)  # 提高精度到15位
+
+            # 智能格式化结果
+            if isinstance(result, Float):
+                if abs(result) < 1e-14:  # 提高零判断精度
+                    result = 0
+                elif abs(result - round(result)) < 1e-14:
+                    result = int(round(result))
+                else:
+                    str_result = f"{result:.15g}"
+                    result = float(str_result)
+
+            self.statusBar().showMessage(self.tr(f'计算结果✔: {result}'), 5000)
             logger.info(self.tr(f"[Log/Math]Succeed: MathTools Running, Result: {result}"))
 
         except SympifyError as e:
-            self.statusBar().showMessage(self.tr('TsukiMathTools🚫: 不是数学表达式！'))
-            logger.error(self.tr("[Log/Error]Misinterpreted as a non-mathematical expression."))
+            error_msg = str(e).lower()
+            if "invalid syntax" in error_msg:
+                msg = "语法错误: 请检查表达式格式是否正确,确保运算符使用正确"
+            elif "expected EOF or operator" in error_msg:
+                msg = "运算符错误: 请检查运算符使用是否合理,可能缺少乘号" 
+            elif "parsing failed" in error_msg:
+                msg = "解析失败: 请确保表达式格式完整且符号使用正确"
+            else:
+                msg = f"不是有效的数学表达式: {error_msg}"
+            
+            self.statusBar().showMessage(self.tr(f'TsukiMathTools🚫: {msg}'), 5000)
+            logger.error(self.tr(f"[Log/Math]Expression Error: {error_msg}"))
+            
+        except ZeroDivisionError:
+            self.statusBar().showMessage(self.tr('TsukiMathTools❌: 除数不能为零！'), 5000)
+            logger.error(self.tr("[Log/Math]Division by zero"))
+            
         except Exception as e:
-            self.statusBar().showMessage(self.tr(f'计算错误❌: {e}'))
-            logger.error(self.tr(f"[Log/Error]Miscalculated: {e}"))
+            self.statusBar().showMessage(self.tr(f'计算错误❌: {str(e)}'), 5000)
+            logger.error(self.tr(f"[Log/Math]Calculation Error: {str(e)}"))
 
     def resetFont(self):
         currentWidget = self.tabWidget.currentWidget()
@@ -1918,7 +2199,7 @@ class TsukiReader(QMainWindow):
                     
                     self.tabWidget.addTab(text_edit, icon, os.path.basename(fileName))
                     
-                    # 尝试使���多种编码打开文件
+                    # 尝试使用多种编码打开文件
                     if not self.tryOpenWithEncodings(fileName, text_edit):
                         raise UnicodeDecodeError('utf-8', b'', 0, 1, '无法使用任何已知编码打开文件')
                     
@@ -2179,19 +2460,28 @@ class TsukiReader(QMainWindow):
             logging.error(f"Error loading file content from {fileName}: {e}")
 
     def setHighlighter(self, text_edit, fileName):
-        highlighter_map = {
-            ('.py', '.pyx', '.pyw', '.pyi'): PythonHighlighter,
-            ('.cpp', '.h', '.hpp', '.c', '.cxx', '.cc', '.hh', '.hxx', '.ino'): CppHighlighter,
-            ('.java', '.class'): JavaHighlighter,
-            ('.md', '.markdown'): MarkdownHighlighter
-        }
-        
-        for extensions, highlighter_class in highlighter_map.items():
-            if fileName.endswith(extensions):
-                self.highlighter = highlighter_class(self.highlight_keywords, text_edit.document())
-                return
-        
-        self.highlighter = None
+        """设置语法高亮器"""
+        try:
+            # 为每个文本编辑器创建独立的高亮器
+            tab_id = id(text_edit)  # 使用对象id作为唯一标识
+            
+            # 如果已存在高亮器，先清除
+            if tab_id in self.highlighters:
+                self.highlighters[tab_id].setDocument(None)
+                
+            # 获取新的高亮器
+            highlighter = get_highlighter_for_file(fileName, text_edit)
+            if highlighter:
+                self.highlighters[tab_id] = highlighter
+                highlighter.setDocument(text_edit.document())
+                logger.info(f"成功设置高亮器: {type(highlighter).__name__} for tab {fileName}")
+            else:
+                self.highlighters.pop(tab_id, None)
+                logger.info(f"未找到匹配的高亮器: {fileName}")
+                
+        except Exception as e:
+            logger.error(f"设置高亮器失败: {str(e)}")
+            self.highlighters.pop(tab_id, None)
 
     def _load_hex_content(self, fileName, text_edit):
         self.loader_thread = FileLoaderThread(fileName)
@@ -2235,7 +2525,7 @@ class TsukiReader(QMainWindow):
         
     def update_config(self, is_beta):
         config = configparser.ConfigParser()
-        config_file_path = './tsuki/assets/app/config/update/update.cfg'
+        config_file_path = self.get_app_path('tsuki/assets/app/config/update/update.cfg')
         
         os.makedirs(os.path.dirname(config_file_path), exist_ok=True)
 
@@ -2291,7 +2581,7 @@ class TsukiReader(QMainWindow):
         # 文本文件处理逻辑
         try:
             config = configparser.ConfigParser()
-            font_path = './tsuki/assets/app/config/font/tn_font_family.ini'
+            font_path = self.get_app_path('tsuki/assets/app/config/font/tn_font_family.ini')
             
             try:
                 with open(font_path, 'rb') as f:
@@ -2791,7 +3081,7 @@ class TsukiReader(QMainWindow):
 
     def apply_background_settings(self, widget):
         config = configparser.ConfigParser()
-        config_path = self.get_app_path('assets/app/config/background/background_color.ini')
+        config_path = 'assets/app/config/background/background_color.ini'
         
         try:
             config.read(config_path, encoding='utf-8')
@@ -3056,17 +3346,17 @@ class TsukiReader(QMainWindow):
         icon_map = self.getIconMap()
         
         if not fileExt:
-            icon_path = './tsuki/assets/resources/language/text.png'
+            icon_path = 'tsuki/assets/resources/language/text.png'
         elif fileExt in icon_map:
             icon_path = icon_map[fileExt]
         else:
-            icon_path = './tsuki/assets/resources/language/unknown.png'
+            icon_path = 'tsuki/assets/resources/language/unknown.png'
         
         # logging.info(self.tr(f"为文件 {file_name} 选择图标: {icon_path}"))
         
         if not os.path.isfile(icon_path):
-            logging.warning(self.tr(f"图标文件不存在: {icon_path}，���用默认图标"))
-            icon_path = './tsuki/assets/resources/language/unknown.png'
+            logging.warning(self.tr(f"图标文件不存在: {icon_path}，用默认图标"))
+            icon_path = 'tsuki/assets/resources/language/unknown.png'
             if not os.path.isfile(icon_path):
                 logging.error(self.tr(f"默认图标文件也不存在: {icon_path}"))
                 return None
@@ -3090,7 +3380,7 @@ class TsukiReader(QMainWindow):
         tab_text = self.tabWidget.tabText(index)
         icon_path = self.getIconPath(tab_text)
         icon = QIcon(icon_path)
-        close_icon = QIcon('./tsuki/assets/resources/close.png')
+        close_icon = QIcon('assets/resources/close.png')
         merged_icon = QIcon()
         merged_icon.addPixmap(icon.pixmap(16, 16))
         merged_icon.addPixmap(close_icon.pixmap(16, 16), QIcon.Normal, QIcon.On)
@@ -3218,21 +3508,20 @@ class TsukiReader(QMainWindow):
         for button in dialog.findChildren(QToolButton):
             button.setIconSize(QSize(20, 20))
             if button.accessibleName() == "Back":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/back.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/back.png'))
             elif button.accessibleName() == "Forward":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/forward.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/forward.png'))
             elif button.accessibleName() == "Parent Directory":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/up.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/up.png'))
             elif button.accessibleName() == "Create New Folder":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/new_folder.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/new_folder.png'))
                 button.setIconSize(QSize(16, 16))
             elif button.accessibleName() == "List View":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/list_view.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/list_view.png'))
                 button.setIconSize(QSize(16, 16))
             elif button.accessibleName() == "Detail View":
-                button.setIcon(QIcon('./tsuki/assets/resources/nav/detail_view.png'))
+                button.setIcon(QIcon('tsuki/assets/resources/nav/detail_view.png'))
                 button.setIconSize(QSize(16, 16))
-                
             # 设置按钮样式
             button.setStyleSheet("""
                 QToolButton {
@@ -3446,7 +3735,7 @@ class TsukiReader(QMainWindow):
             except Exception as e:
                 error_msg = f"另存为失败: {str(e)}"
                 ClutMessageBox.show_message(self, self.tr('保存错误'), self.tr(error_msg))
-                logger.error(f"[Log/ERROR]另存为失败: {str(e)}")
+                logger.error(self.tr(f"[Log/ERROR]另存为失败: {str(e)}"))
                 self.statusBar().showMessage(self.tr('❌ 另存为失败'), 3000)
 
     def closeFile(self):
@@ -3520,6 +3809,7 @@ class TsukiReader(QMainWindow):
             ClutMessageBox.show_message(self, self.tr('错误'), self.tr(f'发生错误：{str(e)}'))
             self.statusBar().showMessage(self.tr(f'TsukiTab❌: 关闭标签页失败！详见MessageBox！'))
             return
+
     def checkForUpdates(self):
         update_software = 'TsukiNotes_Update.exe'
         try:
@@ -3529,38 +3819,6 @@ class TsukiReader(QMainWindow):
             logger.error(self.tr(f"[Log/ERROR]Check For Update Error: {e}"))
             ClutMessageBox.show_message(self, self.tr('错误'), self.tr(f'发生错误：{str(e)}'))
             self.statusBar().showMessage(self.tr(f'TsukiUpdate❌: 检测更新失败！详见MessageBox！'))
-
-    def url_msg(self):
-        versiongj = self.version_gj
-        versiontime = self.update_Date
-        version = self.current_version
-        versiontd = self.version_td
-        version_url = f'https://zzbuaoye.us.kg/TsukiNotes/{version}/update.txt'
-
-        try:
-            response = requests.get(version_url, timeout=60)
-            if response.status_code == 200:
-                latest_version = response.text.strip()
-                self.statusBar().showMessage(self.tr(f'TsukiUpdate✔: 检测成功！云端版本号为:[ {latest_version} ] 服务器状态：正常'))
-                logger.info(self.tr(f"Check For Updates: {latest_version}"))
-                ClutMessageBox.show_message(self, self.tr('TSUKI_BACK—Information'),
-                                        self.tr(f' 返回成功\n 云端Version: {latest_version} ！\n 服务器：正常'))
-                self.statusBar().showMessage(self.tr(f'TsukiBack✔：云端返回数值：{latest_version}'))
-
-
-        except:
-            url_text = self.tr(f"<h1> TsukiNotes </h1>"
-                        f"<p><strong>目标: {version_url} </strong></p>"
-                        f"<p><strong>结果：检测失败！！ </strong></p>"
-                        f"<p><strong>本地: Version = {version} </strong></p>"
-                        f"<p><strong>类型: {versiontd} </strong></p>"
-                        f"<p><strong>日期: {versiontime}</strong></p>"
-                        f"<p><strong>内部: {versiongj}</strong></p>"
-                        f"<p><strong>联系: zzbuaoye@gmail.com </strong></p>")
-
-            QMessageBox.about(self, self.tr("TsukiBack"), url_text)
-            self.statusBar().showMessage(self.tr(f'TsukiUpdate❌🚫: 检测失败！请尝试关闭VPN测试[有可能是服务器寄了]'))
-            logger.error(self.tr(f"[Log/ERROR]Check For Updates Error"))
 
     def Show_Auto_Update2(self):
         current_version = self.current_version
@@ -3741,8 +3999,7 @@ class TsukiReader(QMainWindow):
         msg.exec_()
 
     def aboutDetails(self):
-        versiongj = self.version_gj
-        
+        versiongj = self.version_gj  
         msg = QMessageBox(self)
         msg.setWindowTitle("软件信息")
        # msg.setWindowFlags(msg.windowFlags() & ~Qt.WindowTitleHint)
@@ -3791,15 +4048,18 @@ class TsukiReader(QMainWindow):
 
     def getOnlineUpdateText(self):
         try:
+            # 添加SSL验证选项
             api_url = 'https://api.github.com/repos/buaoyezz/TsukiNotes/releases'
             
             headers = {
-                'Accept': 'application/vnd.github.v3+json'
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'TsukiNotes'
             }
             if hasattr(self, 'github_token'):
                 headers['Authorization'] = f'token {self.github_token}'
             
-            response = requests.get(api_url, headers=headers, timeout=10)
+            # 添加verify=False来处理SSL错误
+            response = requests.get(api_url, headers=headers, timeout=10, verify=False)
             
             if response.status_code == 200:
                 releases = response.json()
@@ -3814,80 +4074,88 @@ class TsukiReader(QMainWindow):
                         if current_version in tag_name or current_version in name:
                             matching_release = release
                             break
-                    
+                        
                     if matching_release:
                         body = matching_release.get('body', '')
-                        # 调整宽度,使内容不超出屏幕
-                        return f"""
-                        <div style='color: #ffffff; font-family: "Microsoft YaHei", sans-serif; 
-                             white-space: pre-wrap; line-height: 1.5; padding: 10px;
-                             max-width: 800px; margin: 0 auto; word-wrap: break-word;'>
-                            {body}
-                        </div>
-                        """
+                        # 确保返回纯文本内容，移除任何HTML标签
+                        return body.strip() if body else "暂无更新日志内容"
                     else:
-                        logger.error(f"未找到版本 {current_version} 的更新日志")
-                        return self.tr("<p style='text-align: center; color: #ffffff;'>未找到当前版本的更新日志</p>")
+                        return f"未找到版本 {current_version} 的更新日志"
                 else:
-                    return self.tr("<p style='text-align: center; color: #ffffff;'>未找到任何发布信息</p>")
-                    
+                    return "未找到任何发布信息"
+                        
             elif response.status_code == 403:
-                logger.error(self.tr("API 访问次数超限"))
-                return self.tr("<p style='text-align: center; color: #ffffff;'>API 访问次数超限，请稍后再试</p>")
+                return "API 访问次数超限，请稍后再试"
             else:
-                error_msg = f"API请求失败 (状态码: {response.status_code})"
-                logger.error(self.tr(f"Github API请求失败: {error_msg}"))
-                return self.tr("<p style='text-align: center; color: #ffffff;'>无法获取Github更新日志，请检查网络连接或稍后再试。</p>")
+                return f"API请求失败 (状态码: {response.status_code})"
+                    
+        except requests.exceptions.SSLError:
+            logger.warning("SSL连接错误")
+            return "SSL连接错误，请检查网络设置"
                 
         except requests.exceptions.Timeout:
-            logger.error(self.tr("Github API 请求超时"))
-            return self.tr("<p style='text-align: center; color: #ffffff;'>请求超时，请检查网络连接</p>")
-            
+            logger.warning("Github API 请求超时")
+            return "请求超时，请检查网络连接"
+                
         except requests.exceptions.RequestException as e:
-            logger.error(self.tr(f"网络请求异常: {e}"))
-            return self.tr("<p style='text-align: center; color: #ffffff;'>网络连接异常，无法获取更新日志。</p>")
-            
+            logger.error(f"网络请求异常: {e}")
+            return "网络连接异常，无法获取更新日志"
+                
         except Exception as e:
-            logger.error(self.tr(f"获取更新日志时发生错误: {e}"))
-            return self.tr("<p style='text-align: center; color: #ffffff;'>获取更新日志时发生错误。</p>")
+            logger.error(f"获取更新日志时发生错误: {e}")
+            return "获取更新日志时发生错误"
 
     def online_updateMessage(self):
-        version = self.current_version 
-        versiontime = self.version_gj  
-        version_td = self.version_td
-        update_time = self.update_Date
-        
         try:
-            online_update_text = self.getOnlineUpdateText()
+            version = self.current_version 
+            versiontime = self.version_gj  
+            version_td = self.version_td
+            update_time = self.update_Date
+            
+            # 获取更新日志内容
+            online_update_text = self.getOnlineUpdateText().strip()
+            
+            # 构建更新日志数据结构
+            update_logs = [{
+                'version': f"{version} {version_td}",
+                'content': f"""**更新时间**: {update_time}
+**内部版本**: {versiontime}
+
+---
+
+{online_update_text}
+
+---
+
+*TsukiNotes {version_td}*"""
+            }]
+        
+            # 创建卡片并设置父窗口
+            card = ClutCard(
+                title=f"TsukiNotes {version} 更新日志",
+                msg="",
+                parent=self  # 设置父窗口为主窗口
+            )
+            card.show_update_log(update_logs)  # 传入列表格式的更新日志
+            
+            # 显示卡片
+            card.setWindowFlags(Qt.Window)  # 设置为独立窗口
+            card.setMinimumSize(500, 400)  # 设置最小尺寸
+            card.show()  # 显示窗口
+            
+            self.statusBar().showMessage('TsukiBack✔: 更新日志已显示')
+            logger.info("成功显示更新日志")
+            
+            # 保持卡片窗口的引用，防止被垃圾回收
+            self._update_card = card
+            
         except Exception as e:
-            logger.error(self.tr(f"[Log/ERROR]获取Github更新日志失败: {e}"))
-            online_update_text = self.tr("无法获取Github更新日志，请检查网络连接或稍后再试。")
-
-        update_text = (
-            "<html>"
-            "<h2 style='color: #ffffff; font-family: \"Microsoft YaHei\", sans-serif; text-align: left; margin-bottom: 20px;'>" + 
-            self.tr("| TsukiNotes Github更新日志🌐") + "</h2>"
-            f"<p style='color: #cccccc; font-size: 16px; text-align: center; margin-bottom: 15px;'>" + 
-            self.tr("版本: {0} {1} [{2}]").format(version, version_td, update_time) + "</p>"
-            "</html>"
-            f"<hr style='border: 0; height: 1px; background: #555555; margin: 20px 0;'>"
-            f"<div style='padding: 15px; border-radius: 5px; margin-bottom: 20px;'>{online_update_text}</div>"
-            f"<hr style='border: 0; height: 1px; background: #555555; margin: 20px 0;'>"
-            f"<p style='color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; margin-top: 10px;'> || {version_td} ||</p>"
-            f"<p style='color: #aaaaaa; font-size: 14px; text-align: center;'>" + 
-            self.tr("[内部版本号: {0}]").format(versiontime) + "</p>"
-        )
-
-        ClutMessageBox.show_message(
-            parent=self,
-            title=self.tr("TsukiNotes[{0}] Github更新日志 -Ver{1}{2}").format(version, version, version_td),
-            text=update_text
-        )
-
-        self.statusBar().showMessage(self.tr('TsukiBack✔: 您查看了Github更新日志'))
-        logger.info(self.tr("成功获取Github更新日志"))
-
-
+            logger.error(f"显示更新日志失败: {e}")
+            ClutMessageBox.show_message(
+                self,
+                "错误",
+                f"无法显示更新日志: {str(e)}"
+            )
 
     def renameTab(self, index):
         current_name = self.tabWidget.tabText(index)
@@ -3958,7 +4226,7 @@ class TsukiReader(QMainWindow):
         index = self.tabWidget.tabBar().tabAt(event.pos())
         if index >= 0:
             menu = QMenu(self)
-            rename_action = QAction(QIcon('./tsuki/assets/resources/font_size_reset_tab.png'), self.tr('重命名标签'), self)
+            rename_action = QAction(QIcon(self.get_app_path('tsuki/assets/resources/font_size_reset_tab.png')), self.tr('重命名标签'), self)
             rename_action.triggered.connect(lambda: self.renameTab(index))
             menu.addAction(rename_action)
             menu.exec_(event.globalPos())
@@ -4125,7 +4393,7 @@ class TsukiReader(QMainWindow):
             if not os.path.exists(config_path):
                 try:
                     config['Background'] = {
-                        'image_path': self.get_app_path('assets/app/default/jianbai.png'),
+                        'image_path': 'assets/app/default/jianbai.png',
                         'color': '#FFFFFF'
                     }
                     with open(config_path, 'w', encoding='utf-8') as f:
@@ -4138,7 +4406,7 @@ class TsukiReader(QMainWindow):
             try:
                 config.read(config_path, encoding='utf-8')
                 image_path = config.get('Background', 'image_path', 
-                                      fallback=self.get_app_path('assets/app/default/jianbai.png'))
+                                      fallback='assets/app/default/jianbai.png')
                 
                 # 规范化路径并将反斜杠转换为正斜杠
                 image_path = os.path.normpath(image_path).replace('\\', '/')
@@ -4156,7 +4424,7 @@ class TsukiReader(QMainWindow):
                     logger.info(f"成功加载背景图片: {image_path}")
                 else:
                     logger.warning(f"背景图片不存在: {image_path}")
-                    default_image = self.get_app_path('assets/app/default/jianbai.png')
+                    default_image = 'assets/app/default/jianbai.png'
                     default_image = os.path.normpath(default_image).replace('\\', '/')
                     if os.path.exists(default_image):
                         style_sheet = """
@@ -4186,7 +4454,7 @@ class TsukiReader(QMainWindow):
             config_path = os.path.join(user_config_dir, 'background_color.ini').replace('\\', '/')
             
             # 规范化默认图片路径
-            default_image_path = os.path.normpath(self.get_apppath('assets/app/default/jianbai.png')).replace('\\', '/')
+            default_image_path = os.path.normpath('assets/app/default/jianbai.png').replace('\\', '/')
             
             # 如果配置文件不存在，创建新的配置
             if not os.path.exists(config_path):
@@ -4270,12 +4538,15 @@ class TsukiReader(QMainWindow):
             config['Background'] = {
                 'color': bg_color,
                 'text_color': text_color,
-                'image_path': './tsuki/assets/app/default/jianbai.png'
-
+                'image_path': self.get_app_path('tsuki/assets/app/default/jianbai.png')
             }
         
-            os.makedirs('tsuki/assets/app/config', exist_ok=True)
-            with open('tsuki/assets/app/config/background/background_color.ini', 'w') as configfile:
+            # 使用get_app_path获取配置文件路径
+            config_dir = self.get_app_path('assets/app/config/background')
+            os.makedirs(config_dir, exist_ok=True)
+            config_path = os.path.join(config_dir, 'background_color.ini')
+            
+            with open(config_path, 'w') as configfile:
                 config.write(configfile)
                 logger.info(self.tr(f"Background Color Saved:{bg_color}"))
         except Exception as e:
@@ -4321,7 +4592,7 @@ class TsukiReader(QMainWindow):
     def loadDefaultBackground(self):
         try:
             # 默认背景图片路径
-            default_bg = './tsuki/assets/app/default/jianbai.png'
+            default_bg = self.get_app_path('tsuki/assets/app/default/jianbai.png')
             
             if os.path.exists(default_bg):
                 # 设置默认背景图片
@@ -4360,8 +4631,8 @@ class TsukiReader(QMainWindow):
     def loadBackgroundSettings(self):
         try:
             # 定义配置文件和默认背景图片的路径
-            self.config_path = "./tsuki/assets/app/config/background/TN_BackGround.ini"
-            self.default_background_path = "./tsuki/assets/app/default/jianbai.png"
+            self.config_path = self.get_app_path("tsuki/assets/app/config/background/TN_BackGround.ini")
+            self.default_background_path = self.get_app_path("tsuki/assets/app/default/jianbai.png")
 
             # 确保配置目录存在
             os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
@@ -4557,47 +4828,66 @@ class TsukiReader(QMainWindow):
             logger.error(self.tr(f"[Log/ERROR]Apply Settings Failed:{str(e)}"))
 
     def addKeywordHighlight(self):
+        """添加关键字高亮"""
         try:
-            current_widget = self.tabWidget.currentWidget()
-            self.highlighter = PythonHighlighter(self.highlight_keywords, current_widget.document())
+            # 遍历所有打开的标签页
+            for i in range(self.tabWidget.count()):
+                current_widget = self.tabWidget.widget(i)
+                current_tab_text = self.tabWidget.tabText(i)
+                
+                if not current_widget or not current_tab_text:
+                    continue
+                    
+                # 确保文件名有效
+                if '.' not in current_tab_text:
+                    current_tab_text += '.txt'
+                    
+                # 设置高亮器
+                self.setHighlighter(current_widget, current_tab_text)
+                
+            # 刷新所有高亮器
+            for highlighter in self.highlighters.values():
+                if highlighter:
+                    highlighter.rehighlight()
+                    
         except Exception as e:
-            ClutMessageBox.show_message(self, self.tr('错误'), self.tr(f'添加关键字高亮时发生异常：{str(e)}'))
+            ClutMessageBox.show_message(self, self.tr('错误'), 
+                self.tr(f'添加关键字高亮时发生异常：{str(e)}'))
             self.statusBar().showMessage(self.tr(f'添加关键字高亮时发生异常：{str(e)}'))
-            crash_report()
-            logger.error(self.tr(f"[Log/ERROR]Add Keyword Highlight Failed:{str(e)}"))
+            logger.error(f"[Log/ERROR]Add Keyword Highlight Failed:{str(e)}")
 
     def reset_background(self):
-        file_path = self.tr('./tsuki/assets/app/config/background/TN_BackGround.ini')
+        config_path = self.get_app_path('assets/app/config/background/TN_BackGround.ini')
+        default_image = 'assets/app/default/jianbai.png'
+        
         config = configparser.ConfigParser()
-        filename = self.tr("TN_BackGround.ini")
-        defaultimage = self.tr("./tsuki/assets/app/default/jianbai.png")
-        if os.path.exists(file_path):
-            config.read(file_path)
+        if os.path.exists(config_path):
+            config.read(config_path)
             if 'Background' not in config.sections():
                 config.add_section('Background')
-            config.set('Background', 'imagepath', self.tr('./tsuki/assets/app/default/jianbai.png'))
-            with open(file_path, 'w') as configfile:
+            config.set('Background', 'imagepath', default_image)
+            with open(config_path, 'w') as configfile:
                 config.write(configfile)
+            
             msg_box = QMessageBox()
-            msg_box.setWindowTitle(self.tr("重置完成[Path]"))
-            msg_box.setText(self.tr(f"背景已重置!{file_path}\n{filename}内imagepath已被重置为默认图片{defaultimage}\n操作成功!\n"))
-            logger.info(self.tr("Reset Background Succeed!"))
-            msg_box.setIconPixmap(QIcon(self.tr('./tsuki/assets/resources/done.png')).pixmap(64, 64))  # 设置自定义图标
+            msg_box.setWindowTitle(self.tr("重置完成"))
+            msg_box.setText(self.tr(f"背景已重置为默认图片！\n操作成功！"))
+            msg_box.setIconPixmap(QIcon(self.get_app_path('assets/resources/done.png')).pixmap(64, 64))
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
-            self.setBackgroundImageFromFile(self.tr('./tsuki/assets/app/default/jianbai.png'))
-
+            
+            self.setBackgroundImageFromFile(default_image)
         else:
             msg_box = QMessageBox()
             msg_box.setWindowTitle(self.tr("提示"))
             msg_box.setText(self.tr("你还没设置背景图"))
-            msg_box.setIconPixmap(QIcon(self.tr('./tsuki/assets/resources/tips.png')).pixmap(64, 64))  # 设置自定义图标
+            msg_box.setIconPixmap(QIcon(self.get_app_path('assets/resources/tips.png')).pixmap(64, 64))
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
 
     def select_and_set_background(self):
         from datetime import datetime
-        user_folder = self.tr('./tsuki/assets/app/default/User_File/')
+        user_folder = self.get_app_path('tsuki/assets/app/default/User_File/')
         image_files = [f for f in os.listdir(user_folder) if f.endswith('.png') or f.endswith('.jpg')]
         if not image_files:
             ClutMessageBox.show_message(self, "提示", "没有找到任何图片文件。")
@@ -4634,7 +4924,7 @@ class TsukiReader(QMainWindow):
         ClutMessageBox.show_message(self, "设置成功", f"背景图片已设置为 {image_path}")
 
     def update_background_config(self, image_path):
-        config_path = self.tr('./tsuki/assets/app/config/BackGround/background_color.ini')
+        config_path = self.get_app_path('tsuki/assets/app/config/BackGround/background_color.ini')
         config = configparser.ConfigParser()
         config.read(config_path)
         if 'Background' not in config.sections():
@@ -4648,10 +4938,9 @@ class TsukiReader(QMainWindow):
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(title)
         msg_box.setText(text)
-        msg_box.setIconPixmap(QIcon(self.tr(f'./tsuki/assets/resources/{icon}')).pixmap(64, 64))
+        msg_box.setIconPixmap(QIcon(self.tr(self.get_app_path(f'tsuki/assets/resources/{icon}'))).pixmap(64, 64))
         msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
-    
+        msg_box.exec_()    
     # setting函数End==============================================================
 
     def performSave(self):
@@ -4729,102 +5018,495 @@ class TsukiReader(QMainWindow):
         获取应用程序路径，自动处理权限和目录创建
         
         Args:
-            relative_path (str): 相对路径，例如 'assets/app/config/first'
-            
+            relative_path (str): 相对路径
+        
         Returns:
             str: 完整的文件路径
         """
         try:
-            # 确定基础目录：优先使用当前目录，失败则使用用户目录
-            try:
-                base_dir = os.path.abspath('./tsuki')
-                # 测试是否有写入权限
-                test_file = os.path.join(base_dir, '.write_test')
-                if not os.path.exists(base_dir):
-                    os.makedirs(base_dir)
-                with open(test_file, 'w') as f:
-                    f.write('test')
-                os.remove(test_file)
-            except (PermissionError, OSError):
-                # 如果没有权限，使用用户目录
-                base_dir = os.path.expanduser('~/TsukiNotes/tsuki')
-                if not os.path.exists(base_dir):
-                    os.makedirs(base_dir)
-                logger.info(self.tr(f"Using user directory: {base_dir}"))
-
+            # 优先使用用户目录
+            base_dir = os.path.expanduser('~/TsukiNotes')
+            
             # 构建完整路径
             full_path = os.path.join(base_dir, relative_path)
             
-            # 如果路径不存在则创建
-            if relative_path and not os.path.exists(full_path):
-                os.makedirs(full_path, exist_ok=True)
-                logger.info(self.tr(f"Created directory: {full_path}"))
+            # 创建目录(如果不存在)
+            if relative_path and not os.path.exists(os.path.dirname(full_path)):
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                logger.info(f"Created directory: {os.path.dirname(full_path)}")
                 
             return full_path
-            
+                
         except Exception as e:
-            logger.error(self.tr(f"[Log/ERROR]Error accessing path {relative_path}: {str(e)}"))
-            # 返回用户目录作为后备方案
-            fallback_path = os.path.expanduser(f'~/TsukiNotes/tsuki/{relative_path}')
-            os.makedirs(fallback_path, exist_ok=True)
-            return fallback_path
+            logger.error(f"Error accessing path {relative_path}: {str(e)}")
+            # 返回临时目录作为后备方案
+            temp_path = os.path.join(tempfile.gettempdir(), 'TsukiNotes', relative_path)
+            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            return temp_path
 
     def getLatestVersion(self):
         try:
             # 获取 releases 信息
-            response = requests.get("https://api.github.com/repos/buaoyezz/TsukiNotes/releases")
+            response = requests.get(
+                "https://api.github.com/repos/buaoyezz/TsukiNotes/releases",
+                verify=False  # 临时禁用证书验证
+            )
+            response.raise_for_status()  # 检查响应状态
             releases = response.json()
             
-            if releases and len(releases) > 0:
+            if isinstance(releases, list) and releases:  # 确保返回的是列表且不为空
                 # 获取最新版本信息
-                latest_release = releases[0]
-                version = latest_release["tag_name"].replace("TsukiNotesV", "")
-                return version
+                latest_release = releases[0]  # 取第一个release
+                if isinstance(latest_release, dict):  # 确保是字典类型
+                    version = latest_release.get("tag_name", "").replace("TsukiNotesV", "")
+                    if version:
+                        logger.info(f"获取到最新版本: {version}")
+                        return version
                 
+            logger.warning("未能从API响应中解析出版本信息")
+            return None
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"请求GitHub API失败: {e}")
+            return None
+        except (ValueError, KeyError, AttributeError) as e:
+            logger.error(f"解析版本信息失败: {e}")
+            return None
         except Exception as e:
-            logger.error(f"获取最新版本失败: {e}")
+            logger.error(f"获取最新版本时发生未知错误: {e}")
             return None
 
-def get_crash_report_path():
-    """获取 crash report 程序的路径"""
-    if getattr(sys, 'frozen', False):
-        # 如果是打包后的 exe
-        base_path = os.path.dirname(sys.executable)
-        crash_report_path = os.path.join(base_path, 'CrashReport.exe')
-    else:
-        # 如果是开发环境
-        crash_report_path = os.path.join(os.path.dirname(__file__), 'CrashReport.exe')
-    
-    return crash_report_path
+    def load_theme(self):
+        try:
+            config = configparser.ConfigParser()
+            config_path = self.get_app_path('assets/app/config/theme/theme.ini')
+            
+            # 直接加载默认主题
+            self.apply_theme('newyear2025')
+            
+            if os.path.exists(config_path):
+                config.read(config_path, encoding='utf-8')
+                theme_name = config.get('Theme', 'current_theme', fallback='newyear2025')
+                if theme_name != 'newyear2025':
+                    self.apply_theme(theme_name)
+                
+            logger.info("主题加载完成")
+            
+        except Exception as e:
+            logger.error(f"加载主题失败: {e}")
+            # 出错时使用默认主题
+            self.apply_theme('default')
 
-def launch_crash_report(error_info):
-    """启动崩溃报告程序"""
-    try:
-        crash_report_path = get_crash_report_path()
-        if os.path.exists(crash_report_path):
-            # 使用新的进程组启动崩溃报告程序
-            startupinfo = None
-            if os.name == 'nt':  # Windows系统
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    def apply_theme(self, theme_name):
+        """应用主题样式"""
+        try:
+            # 保存当前所有样式作为备份
+            original_styles = self._backup_current_styles()
             
-            subprocess.Popen(
-                [crash_report_path, error_info],
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-                close_fds=True
-            )
+            # 检查主题路径
+            theme_path = f'./tsuki/theme/{theme_name}'
+            if not os.path.exists(theme_path):
+                logger.warning(f"主题路径不存在: {theme_path}, 使用默认主题喵~")
+                theme_path = './tsuki/theme/default'
+                theme_name = 'default'
             
-            # 确保主程序正常退出
-            sys.exit(1)
-        else:
-            logger.error(f"找不到崩溃报告程序: {crash_report_path}")
+            # 读取主题配置
+            theme_config = self._load_theme_config(theme_path)
             
-    except Exception as e:
-        logger.error(f"启动崩溃报告程序失败: {str(e)}")
-        # 确保错误被记录
-        with open('crash_launch_error.log', 'w', encoding='utf-8') as f:
-            f.write(f"Error launching crash report: {str(e)}\n{traceback.format_exc()}")
+            # 应用主题样式
+            components = ['window', 'tab', 'menu', 'status']
+            for component in components:
+                success = self._apply_component_style(component, theme_path, theme_config, original_styles)
+                if not success:
+                    logger.warning(f"{component}样式应用失败，保留原样式喵~")
+            
+            # 应用编辑器样式
+            self._apply_editor_styles(theme_path, theme_config, original_styles)
+            
+            # 保存主题设置
+            self.save_theme_settings(theme_name)
+            self.statusBar().showMessage(f'TsukiTheme✔: 成功应用主题 {theme_name} 喵~')
+            logger.info(f"主题应用成功: {theme_name}")
+            
+        except Exception as e:
+            logger.error(f"应用主题失败: {e}")
+            self._restore_original_styles(original_styles)
+            self.statusBar().showMessage('TsukiTheme❌: 主题应用失败，已恢复原样式喵~')
+
+    def _load_theme_config(self, theme_path):
+            """加载主题配置文件"""
+            try:
+                config_path = f'{theme_path}/theme.json'
+                if os.path.exists(config_path):
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        theme_config = json.load(f)
+                        logger.info(f"成功加载主题配置: {config_path}")
+                        return theme_config
+                else:
+                    logger.warning(f"主题配置文件不存在: {config_path}")
+                    return {}
+            except Exception as e:
+                logger.error(f"加载主题配置失败: {e}")
+                return {}
+
+    def _get_style(self, component, theme_path, theme_config):
+        """获取组件样式，优先使用QSS文件"""
+        try:
+            # 检查QSS文件
+            qss_file = f'{theme_path}/{component}.qss'
+            if os.path.exists(qss_file):
+                with open(qss_file, 'r', encoding='utf-8') as f:
+                    return f.read()
+            
+            # 如果没有QSS文件，从theme.json配置中获取
+            style_key = f'{component}_style'
+            if style_key in theme_config:
+                return theme_config[style_key]
+                
+            return ''
+            
+        except Exception as e:
+            logger.error(f"获取{component}样式失败: {e}")
+            return ''
+
+    def save_theme_settings(self, theme_name):
+        """保存主题设置"""
+        try:
+            config_path = self.get_app_path('assets/app/config/theme/theme.ini')
+            
+            config = configparser.ConfigParser()
+            config['Theme'] = {
+                'current_theme': theme_name,
+                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                config.write(f)
+                
+            logger.info(f"主题设置已保存: {theme_name}")
+            
+        except Exception as e:
+            logger.error(f"保存主题设置失败: {e}")
+
+    def load_theme_settings(self):
+        """加载主题设置"""
+        try:
+            config_path = self.get_app_path('tsuki/assets/app/config/theme/theme.ini')
+            if not os.path.exists(config_path):
+                return 'default'
+                
+            config = configparser.ConfigParser()
+            config.read(config_path, encoding='utf-8')
+            
+            if 'Theme' in config:
+                return config['Theme'].get('current_theme', 'default')
+            return 'default'
+            
+        except Exception as e:
+            logger.error(f"加载主题设置失败: {e}")
+            return 'default'
+
+    def _backup_current_styles(self):
+        """备份当前样式"""
+        return {
+            'window': self.styleSheet(),
+            'tab': self.tabWidget.styleSheet(),
+            'menu': self.menuBar().styleSheet() if self.menuBar() else '',
+            'status': self.statusBar().styleSheet() if self.statusBar() else '',
+            'editors': [
+                {
+                    'widget': widget,
+                    'style': widget.styleSheet()
+                }
+                for i in range(self.tabWidget.count())
+                if hasattr((widget := self.tabWidget.widget(i)), 'styleSheet')
+            ]
+        }
+
+    def _restore_original_styles(self, original_styles):
+        """恢复原始样式"""
+        try:
+            if not original_styles:
+                return
+                
+            self.setStyleSheet(original_styles.get('window', ''))
+            self.tabWidget.setStyleSheet(original_styles.get('tab', ''))
+            
+            if self.menuBar():
+                self.menuBar().setStyleSheet(original_styles.get('menu', ''))
+            if self.statusBar():
+                self.statusBar().setStyleSheet(original_styles.get('status', ''))
+            
+            # 恢复编辑器样式
+            for editor_info in original_styles.get('editors', []):
+                if 'widget' in editor_info and 'style' in editor_info:
+                    editor_info['widget'].setStyleSheet(editor_info['style'])
+                    
+            logger.info("已恢复原始样式喵~")
+        except Exception as e:
+            logger.error(f"恢复原始样式失败: {e}")
+
+    def _apply_component_style(self, component, theme_path, theme_config, original_styles):
+        """应用单个组件的样式"""
+        try:
+            # 获取新样式
+            style = self._get_style(component, theme_path, theme_config)
+            if not style:
+                return True  # 没有新样式，保持原样
+                
+            # 保留原始样式中的图标设置
+            original_style = original_styles[component]
+            icon_styles = self._extract_icon_styles(original_style)
+            
+            # 合并样式
+            new_style = self._merge_styles(style, icon_styles)
+            
+            # 应用样式
+            if component == 'window':
+                self.setStyleSheet(new_style)
+            elif component == 'tab':
+                self.tabWidget.setStyleSheet(new_style)
+            elif component == 'menu' and self.menuBar():
+                self.menuBar().setStyleSheet(new_style)
+            elif component == 'status' and self.statusBar():
+                self.statusBar().setStyleSheet(new_style)
+                
+            return True
+            
+        except Exception as e:
+            logger.warning(f"应用{component}样式失败: {e}")
+            return False
+
+    def _extract_icon_styles(self, style):
+        """提取样式中的图标相关设置"""
+        if not style:
+            return ""
+            
+        icon_styles = []
+        for line in style.split('\n'):
+            if any(keyword in line.lower() for keyword in 
+                   ['image', 'icon', 'pixmap', 'background-image']):
+                icon_styles.append(line)
+        return '\n'.join(icon_styles)
+
+    def _merge_styles(self, new_style, icon_styles):
+        """合并新样式和图标样式，保留原有的图标和特殊样式"""
+        if not new_style:
+            return icon_styles
+        if not icon_styles:
+            return new_style
+            
+        # 如果新样式已经包含了图标设置，检查是否与原有图标相同
+        if any(keyword in new_style.lower() for keyword in 
+               ['image', 'icon', 'pixmap', 'background-image']):
+            # 如果新样式没有完全覆盖原有图标，则保留原有图标
+            for icon_line in icon_styles.split('\n'):
+                if icon_line.strip() and icon_line not in new_style:
+                    # 找到对应的选择器并添加图标样式
+                    selector = icon_line.split('{')[0].strip()
+                    if selector in new_style:
+                        new_style = new_style.replace(
+                            '}',
+                            f'; {icon_line.split("{{")[1].strip()} }}',
+                            1
+                        )
+                    else:
+                        new_style = f"{new_style}\n{icon_line}"
+            return new_style
+            
+        # 智能合并样式
+        merged_styles = []
+        new_style_parts = new_style.split('}')
+        
+        for part in new_style_parts:
+            if not part.strip():
+                continue
+            if '{' in part:
+                selector = part.split('{')[0].strip()
+                # 查找对应的图标样式
+                matching_icons = [
+                    icon for icon in icon_styles.split('\n')
+                    if icon.strip().startswith(selector)
+                ]
+                if matching_icons:
+                    # 合并样式
+                    style_content = part.split('{')[1].strip()
+                    icon_content = '; '.join(
+                        icon.split('{')[1].strip().rstrip('}')
+                        for icon in matching_icons
+                    )
+                    merged_styles.append(
+                        f"{selector} {{\n    {style_content};\n    {icon_content}\n}}"
+                    )
+                else:
+                    merged_styles.append(f"{part}}}")
+            else:
+                merged_styles.append(part)
+                
+        result = '\n'.join(merged_styles)
+        
+        # 添加未匹配的图标样式
+        for icon_line in icon_styles.split('\n'):
+            if icon_line.strip() and icon_line not in result:
+                result = f"{result}\n{icon_line}"
+                
+        return result
+
+    def _apply_editor_styles(self, theme_path, theme_config, original_styles):
+        """应用编辑器样式"""
+        try:
+            # 获取编辑器样式
+            editor_style = self._get_style('editor', theme_path, theme_config)
+            if not editor_style:
+                return
+                
+            # 应用到每个编辑器
+            for editor_info in original_styles['editors']:
+                widget = editor_info['widget']
+                original_style = editor_info['style']
+                
+                # 保留原有图标样式
+                icon_styles = self._extract_icon_styles(original_style)
+                new_style = self._merge_styles(editor_style, icon_styles)
+                
+                # 应用新样式
+                widget.setStyleSheet(new_style)
+                
+            logger.info("编辑器样式应用成功喵~")
+                
+        except Exception as e:
+            logger.error(f"应用编辑器样式失败: {e}")
+
+    def createFontDialog(self):
+        font_dialog = QFontDialog()
+        font_dialog.setWindowTitle("TsukiNotes Font Selector")
+        
+        # 设置整体样式
+        font_dialog.setStyleSheet("""
+            QFontDialog {
+                background-color: #f5f6fa;
+                border-radius: 10px;
+            }
+            
+            QListView {
+                background-color: #ffffff;
+                border: 1px solid #e1e4e8;
+                border-radius: 6px;
+                padding: 5px;
+                selection-background-color: #8b5cf6;
+                selection-color: white;
+            }
+            
+            QComboBox {
+                background-color: #ffffff;
+                border: 1px solid #e1e4e8;
+                border-radius: 4px;
+                padding: 5px;
+                min-height: 25px;
+            }
+            
+            QComboBox:hover {
+                border-color: #8b5cf6;
+            }
+            
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            
+            QComboBox::down-arrow {
+                image: url(./tsuki/assets/resources/GUI/down_arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+            
+            QCheckBox {
+                spacing: 8px;
+            }
+            
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #e1e4e8;
+                border-radius: 4px;
+            }
+            
+            QCheckBox::indicator:checked {
+                background-color: #8b5cf6;
+                border-color: #8b5cf6;
+                image: url(./tsuki/assets/resources/GUI/check.png);
+            }
+            
+            QCheckBox::indicator:hover {
+                border-color: #8b5cf6;
+            }
+            
+            QPushButton {
+                background-color: #8b5cf6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                min-width: 80px;
+            }
+            
+            QPushButton:hover {
+                background-color: #7c3aed;
+            }
+            
+            QPushButton:pressed {
+                background-color: #6d28d9;
+            }
+            
+            QLabel {
+                color: #4a5568;
+                font-weight: bold;
+            }
+            
+            QSpinBox {
+                background-color: #ffffff;
+                border: 1px solid #e1e4e8;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            
+            QSpinBox:hover {
+                border-color: #8b5cf6;
+            }
+            
+            QGroupBox {
+                background-color: #ffffff;
+                border: 1px solid #e1e4e8;
+                border-radius: 6px;
+                margin-top: 1em;
+                padding-top: 1em;
+            }
+            
+            QGroupBox::title {
+                color: #4a5568;
+                font-weight: bold;
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 5px;
+            }
+            
+            /* 预览区域样式 */
+            #sampleWidget {
+                background-color: #ffffff;
+                border: 1px solid #e1e4e8;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+        
+        # 添加阴影效果
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 50))
+        shadow.setOffset(0, 4)
+        font_dialog.setGraphicsEffect(shadow)
+        
+        return font_dialog
 
 def crash_app():
     """测试崩溃功能"""
@@ -4834,7 +5516,63 @@ def crash_app():
         error_info = f"Application crashed: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_info)
         launch_crash_report(error_info)
+def get_crash_report_path():
+    """获取 crash report 程序的路径"""
+    if getattr(sys, 'frozen', False):
+        # 修改: 使用相对路径
+        base_path = os.path.dirname(sys.executable)
+        crash_report_path = os.path.join(base_path, 'tsuki', 'core', 'CrashReport.exe')
+    else:
+        # 开发环境路径
+        crash_report_path = os.path.join(os.path.dirname(__file__), 'tsuki', 'core', 'CrashReport.exe')
+    
+    # 添加路径检查和日志
+    if os.path.exists(crash_report_path):
+        logger.info(f"找到 CrashReport: {crash_report_path}")
+    else:
+        logger.error(f"CrashReport 不存在: {crash_report_path}")
+        
+    return crash_report_path
 
+def launch_crash_report(error_info):
+    try:
+        crash_report_path = get_crash_report_path()
+        if os.path.exists(crash_report_path):
+            # 修改启动方式
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+                # 使用shell=True确保正确启动exe
+                process = subprocess.Popen(
+                    [crash_report_path, error_info],
+                    shell=True,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                # 记录启动结果
+                stdout, stderr = process.communicate()
+                if process.returncode != 0:
+                    logger.error(f"CrashReport启动失败: {stderr.decode()}")
+                else:
+                    logger.info("CrashReport启动成功")
+            else:
+                # 非Windows系统的处理
+                subprocess.Popen([crash_report_path, error_info])
+                
+            sys.exit(1)
+        else:
+            logger.error(f"CrashReport不存在: {crash_report_path}")
+            
+    except Exception as e:
+        logger.error(f"启动CrashReport失败: {str(e)}")
+        # 保存错误日志
+        with open('crash_launch_error.log', 'w', encoding='utf-8') as f:
+            f.write(f"Error launching crash report: {str(e)}\n{traceback.format_exc()}")
+            
 if __name__ == "__main__":
     try:
         app = QApplication(sys.argv)
@@ -4845,5 +5583,22 @@ if __name__ == "__main__":
     except Exception as e:
         error_info = f"Application crashed: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_info)
-        launch_crash_report(error_info)
+        
+        # 添加详细的错误信息
+        crash_info = {
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'sys_info': {
+                'platform': sys.platform,
+                'python_version': sys.version,
+                'executable': sys.executable
+            }
+        }
+        
+        # 将错误信息转换为字符串
+        error_str = json.dumps(crash_info)
+        
+        # 启动崩溃报告
+        launch_crash_report(error_str)
         sys.exit(1)
